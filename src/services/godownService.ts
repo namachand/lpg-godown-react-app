@@ -40,7 +40,8 @@ export const createStockOutLoad = async (payload: {
   reference_id?: number | string;
   items: {
     product_id: number;
-    quantity: number;
+    empty_quantity: number;
+    defective_quantity: number;
   }[];
 }) => {
   const res = await api.post('/godown/stock-out-loads', payload);

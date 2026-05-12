@@ -2,21 +2,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator,
-    DeviceEventEmitter,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  DeviceEventEmitter,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import { COLORS } from '../../constants/colors';
 import {
-    getDefectiveLoads,
-    getStockInLoads,
-    getStockOutLoads,
+  getDefectiveLoads,
+  getStockInLoads,
+  getStockOutLoads,
 } from '../../services/godownService';
 
 type StockTab = 'in' | 'out' | 'defective';
@@ -155,8 +155,8 @@ export default function GodownStockScreen() {
     defectiveFilter === 'ALL'
       ? defectives
       : defectives.filter(
-          (item) => item.type.toUpperCase() === defectiveFilter
-        );
+        (item) => item.type.toUpperCase() === defectiveFilter
+      );
 
   return (
     <ScreenContainer>
@@ -310,13 +310,12 @@ export default function GodownStockScreen() {
                     title="OLDER"
                     count={`${olderStockOut.length} loads`}
                   />
-
-                  {olderStockOut.map((item) => (
+                  {olderStockOut.map((item, index) => (
                     <LoadCard
-                      key={item.id}
+                      key={`older-stock-out-${item.id}-${item.date}-${index}`}
                       item={item}
                       unit="EMPTIES"
-                      onPress={() => router.push(`/load-out/${item.id}` as any)}
+                      onPress={() => router.push(`/load-out-${item.id}` as any)}
                     />
                   ))}
                 </>

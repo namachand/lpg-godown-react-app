@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -270,18 +270,39 @@ export default function DeliveriesScreen() {
     try {
       setCreateSaleLoading(true);
 
+      const orderedQty = 1;
+
+      const emptyCylinderStatus =
+        emptyCylinderQty === 0
+          ? 'PENDING'
+          : emptyCylinderQty === orderedQty
+            ? 'DELIVERED'
+            : 'PARTIAL_PENDING';
+
       await api.post("/drivers/sales", {
         driver_id: DRIVER_ID,
         customer_name: foundCustomer.name,
         phone: foundCustomer.phone,
         address: foundCustomer.address,
         cylinder_type: "DOMESTIC",
+
         product_id: selectedProduct.id,
-        quantity: 1,
+
+        quantity: orderedQty,
+
         payment_method: salePaymentMethod,
+
         amount: Number(saleAmount),
+
         empty_cylinder_collected: emptyCylinderQty > 0,
-        empty_cylinder_qty: emptyCylinderQty,
+
+        delivered_qty: orderedQty,
+
+        empty_cylinder_qty: Number(emptyCylinderQty || 0),
+
+        empty_cylinder_status: emptyCylinderStatus,
+
+        defective_qty: 0,
       });
 
       setCreateSaleVisible(false);
@@ -434,16 +455,21 @@ export default function DeliveriesScreen() {
 
               {filteredDeliveries.length ? (
                 filteredDeliveries.map((item) => (
-                  <DeliveryCard
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => router.push(`/delivery/${item.saleId}`)}
                     key={item.saleId}
-                    name={item.customerName}
-                    address={item.address}
-                    type={item.product}
-                    qty={item.quantity}
-                    status={item.status}
-                    showMarkDelivered={item.showMarkDelivered}
-                    onMarkDelivered={() => handleOpenConfirm(item)}
-                  />
+                  >
+                    <DeliveryCard
+                      name={item.customerName}
+                      address={item.address}
+                      type={item.product}
+                      qty={item.quantity}
+                      status={item.status}
+                      showMarkDelivered={item.showMarkDelivered}
+                      onMarkDelivered={() => handleOpenConfirm(item)}
+                    />
+                  </TouchableOpacity>
                 ))
               ) : (
                 <View style={styles.emptyBox}>

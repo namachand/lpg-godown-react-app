@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   DeviceEventEmitter,
   Image,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -47,6 +48,8 @@ export default function GodownLoadOutDetailScreen() {
       setApproving(true);
       await approveStockOutLoad(id);
       DeviceEventEmitter.emit('STOCK_OUT_APPROVED', Number(id));
+      DeviceEventEmitter.emit('NEW_STOCK_OUT');
+      DeviceEventEmitter.emit('NEW_DEFECTIVE');
       router.back();
     } catch (error) {
       console.log('Approve stock out error:', error);
@@ -77,11 +80,19 @@ export default function GodownLoadOutDetailScreen() {
     );
   }
 
+  const emptyTotal = Number(loadData.empty_qty || 0);
+  const defectiveTotal = Number(loadData.defective_qty || 0);
+  const approveTotal = Number(loadData.qty || emptyTotal + defectiveTotal);
+
   return (
     <ScreenContainer>
       <AppHeader />
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.pageHeader}>
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={23} color={COLORS.textPrimary} />
@@ -93,7 +104,7 @@ export default function GodownLoadOutDetailScreen() {
           </View>
 
           <View style={styles.totalBox}>
-            <Text style={styles.totalValue}>{loadData.qty}</Text>
+            <Text style={styles.totalValue}>{approveTotal}</Text>
             <Text style={styles.totalLabel}>CYLINDERS</Text>
           </View>
         </View>
@@ -121,34 +132,82 @@ export default function GodownLoadOutDetailScreen() {
 
           {loadData.items?.map((item: any) => (
             <StockRow
-              key={item.transaction_id}
-              label={`${item.item} Empty`}
+              key={`empty-${item.transaction_id}`}
+              label={`${item.item} Empty (${item.type})`}
               value={item.quantity}
             />
           ))}
 
           <View style={styles.totalRow}>
-            <Text style={styles.totalRowText}>TOTAL</Text>
-            <Text style={styles.totalRowValue}>{loadData.qty}</Text>
+            <Text style={styles.totalRowText}>TOTAL EMPTIES</Text>
+            <Text style={styles.totalRowValue}>{emptyTotal}</Text>
           </View>
         </View>
+
+        {loadData.defective_items?.length > 0 && (
+          <>
+            <View style={styles.defectiveTopHeader}>
+              <View style={styles.defectiveTitleLeft}>
+                <Ionicons name="warning-outline" size={15} color="#EF4444" />
+                <Text style={styles.defectiveTopTitle}>DEFECTIVE ITEMS</Text>
+              </View>
+
+              <Text style={styles.defectiveTopTotal}>
+                {defectiveTotal} TOTAL
+              </Text>
+            </View>
+
+            <View style={styles.defectiveTableCard}>
+              <View style={styles.defectiveTableHead}>
+                <Text style={styles.defectiveHeadText}>DEFECTIVE ITEM</Text>
+                <Text style={styles.defectiveHeadText}>QTY</Text>
+              </View>
+
+              {loadData.defective_items.map((item: any) => (
+                <StockRow
+                  key={`defective-${item.transaction_id}`}
+                  label={`${item.item} Defective (${item.type})`}
+                  value={item.quantity}
+                  danger
+                />
+              ))}
+
+              <View style={styles.defectiveTotalRow}>
+                <Text style={styles.defectiveTotalText}>TOTAL DEFECTIVES</Text>
+                <Text style={styles.defectiveTotalValue}>
+                  {defectiveTotal}
+                </Text>
+              </View>
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionTitleSmall}>INVOICE DETAILS</Text>
 
         <View style={styles.invoiceCard}>
           <View style={styles.invoiceRow}>
             <View style={styles.invoiceLeft}>
-              <Ionicons name="document-text-outline" size={16} color={COLORS.textSecondary} />
+              <Ionicons
+                name="document-text-outline"
+                size={16}
+                color={COLORS.textSecondary}
+              />
               <Text style={styles.invoiceLabel}>Invoice No.</Text>
             </View>
+
             <Text style={styles.invoiceValue}>{loadData.invoice}</Text>
           </View>
 
           <View style={styles.invoiceRow}>
             <View style={styles.invoiceLeft}>
-              <Ionicons name="calendar-outline" size={16} color={COLORS.textSecondary} />
+              <Ionicons
+                name="calendar-outline"
+                size={16}
+                color={COLORS.textSecondary}
+              />
               <Text style={styles.invoiceLabel}>Invoice Date</Text>
             </View>
+
             <Text style={styles.invoiceValue}>23 Apr 2025</Text>
           </View>
         </View>
@@ -168,7 +227,7 @@ export default function GodownLoadOutDetailScreen() {
           }}
           style={styles.invoiceImage}
         />
-      </View>
+      </ScrollView>
 
       <View style={styles.bottomAction}>
         <TouchableOpacity
@@ -180,12 +239,13 @@ export default function GodownLoadOutDetailScreen() {
           disabled={approving || loadData.status === 'APPROVED'}
         >
           <Ionicons name="checkmark" size={18} color={COLORS.white} />
+
           <Text style={styles.approveText}>
             {loadData.status === 'APPROVED'
               ? 'Approved'
               : approving
               ? 'Approving...'
-              : `Approve All Stock (${loadData.qty})`}
+              : `Approve All Stock (${approveTotal})`}
           </Text>
         </TouchableOpacity>
       </View>
@@ -208,11 +268,16 @@ function InfoRow({ icon, label, value }: any) {
   );
 }
 
-function StockRow({ label, value }: any) {
+function StockRow({ label, value, danger }: any) {
   return (
-    <View style={styles.stockRow}>
-      <Text style={styles.stockLabel}>{label}</Text>
-      <Text style={styles.stockValue}>{value}</Text>
+    <View style={[styles.stockRow, danger && styles.defectiveStockRow]}>
+      <Text style={[styles.stockLabel, danger && styles.defectiveStockLabel]}>
+        {label}
+      </Text>
+
+      <Text style={[styles.stockValue, danger && styles.defectiveStockValue]}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -223,43 +288,56 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  scroll: {
+    flex: 1,
+  },
+
   content: {
     padding: 16,
-    paddingBottom: 130,
+    paddingBottom: 170,
   },
+
   pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 18,
   },
+
   titleBox: {
     flex: 1,
     marginLeft: 18,
   },
+
   title: {
     fontSize: 20,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
+
   date: {
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
+
   totalBox: {
     alignItems: 'flex-end',
   },
+
   totalValue: {
     fontSize: 25,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
+
   totalLabel: {
     fontSize: 9,
     fontWeight: '900',
     color: COLORS.textSecondary,
     letterSpacing: 0.8,
   },
+
   infoCard: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -268,11 +346,13 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 18,
   },
+
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 13,
   },
+
   infoIcon: {
     width: 36,
     height: 36,
@@ -282,29 +362,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
+
   infoLabel: {
     fontSize: 10,
     fontWeight: '900',
     color: COLORS.textSecondary,
     letterSpacing: 0.6,
   },
+
   infoValue: {
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
     marginTop: 1,
   },
+
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   sectionTitle: {
     fontSize: 12,
     fontWeight: '900',
     color: COLORS.textSecondary,
     letterSpacing: 0.8,
   },
+
   sectionTitleSmall: {
     fontSize: 12,
     fontWeight: '900',
@@ -313,6 +398,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 18,
   },
+
   editPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -322,11 +408,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
+
   editText: {
     fontSize: 12,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
+
   tableCard: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -335,6 +423,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 8,
   },
+
   tableHead: {
     backgroundColor: '#F8FAFC',
     flexDirection: 'row',
@@ -344,11 +433,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
+
   tableHeadText: {
     fontSize: 10,
     fontWeight: '900',
     color: COLORS.textSecondary,
   },
+
   stockRow: {
     minHeight: 48,
     paddingHorizontal: 14,
@@ -358,16 +449,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   stockLabel: {
     fontSize: 14,
     fontWeight: '800',
     color: COLORS.textPrimary,
+    flex: 1,
   },
+
   stockValue: {
     fontSize: 16,
     fontWeight: '900',
     color: COLORS.textPrimary,
+    marginLeft: 12,
   },
+
   totalRow: {
     minHeight: 52,
     backgroundColor: '#F8FAFC',
@@ -376,16 +472,107 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+
   totalRowText: {
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
+
   totalRowValue: {
     fontSize: 18,
     fontWeight: '900',
     color: COLORS.primary,
   },
+
+  defectiveTopHeader: {
+    marginTop: 18,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  defectiveTitleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  defectiveTopTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.8,
+  },
+
+  defectiveTopTotal: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#EF4444',
+  },
+
+  defectiveTableCard: {
+    backgroundColor: '#FFF7F7',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+
+  defectiveTableHead: {
+    backgroundColor: '#FFF7F7',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FECACA',
+  },
+
+  defectiveHeadText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#EF4444',
+    letterSpacing: 0.7,
+  },
+
+  defectiveStockRow: {
+    backgroundColor: '#FFF7F7',
+    borderBottomColor: '#FECACA',
+  },
+
+  defectiveStockLabel: {
+    color: COLORS.textPrimary,
+  },
+
+  defectiveStockValue: {
+    color: '#EF4444',
+  },
+
+  defectiveTotalRow: {
+    minHeight: 52,
+    backgroundColor: '#FFF7F7',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderColor: '#FECACA',
+  },
+
+  defectiveTotalText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+
+  defectiveTotalValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#EF4444',
+  },
+
   invoiceCard: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -394,30 +581,36 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
   },
+
   invoiceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   invoiceLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+
   invoiceLabel: {
     fontSize: 14,
     color: COLORS.textSecondary,
   },
+
   invoiceValue: {
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
+
   photoHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   downloadPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -427,16 +620,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
+
   downloadText: {
     fontSize: 11,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
+
   invoiceImage: {
     height: 190,
     borderRadius: 10,
     marginTop: 8,
   },
+
   bottomAction: {
     position: 'absolute',
     left: 0,
@@ -447,6 +643,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
+
   approveButton: {
     height: 58,
     backgroundColor: COLORS.green,
@@ -456,9 +653,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+
   approvedButton: {
     opacity: 0.75,
   },
+
   approveText: {
     color: COLORS.white,
     fontSize: 17,

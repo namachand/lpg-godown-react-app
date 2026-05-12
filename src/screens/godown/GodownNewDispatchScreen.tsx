@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   DeviceEventEmitter,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -20,6 +21,11 @@ import {
   getDriverLists,
 } from '../../services/godownService';
 
+type QtyValue = {
+  empty: string;
+  defective: string;
+};
+
 export default function GodownNewDispatchScreen() {
   const [drivers, setDrivers] = useState<any[]>([]);
   const [products, setProducts] = useState<any>({
@@ -30,7 +36,7 @@ export default function GodownNewDispatchScreen() {
   const [selectedDriver, setSelectedDriver] = useState<any>(null);
   const [showDriverDropdown, setShowDriverDropdown] = useState(false);
   const [erv, setErv] = useState('');
-  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [quantities, setQuantities] = useState<Record<string, QtyValue>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -65,22 +71,54 @@ export default function GodownNewDispatchScreen() {
     [products]
   );
 
-  const total = allProducts.reduce((sum, item) => {
-    return sum + Number(quantities[String(item.id)] || 0);
+  const totalEmpty = allProducts.reduce((sum, item) => {
+    const row = quantities[String(item.id)];
+    return sum + Number(row?.empty || 0);
   }, 0);
+
+  const totalDefective = allProducts.reduce((sum, item) => {
+    const row = quantities[String(item.id)];
+    return sum + Number(row?.defective || 0);
+  }, 0);
+
+  const grandTotal = totalEmpty + totalDefective;
+
+  const updateQuantity = (
+    productId: string | number,
+    field: 'empty' | 'defective',
+    value: string
+  ) => {
+    const cleanValue = value.replace(/[^0-9]/g, '');
+
+    setQuantities((prev) => ({
+      ...prev,
+      [String(productId)]: {
+        empty: prev[String(productId)]?.empty || '0',
+        defective: prev[String(productId)]?.defective || '0',
+        [field]: cleanValue || '0',
+      },
+    }));
+  };
 
   const handleSubmit = async () => {
     try {
-      if (!selectedDriver || total <= 0) return;
+      if (!selectedDriver || grandTotal <= 0) return;
 
       setSubmitting(true);
 
       const items = allProducts
-        .map((item) => ({
-          product_id: item.id,
-          quantity: Number(quantities[String(item.id)] || 0),
-        }))
-        .filter((item) => item.quantity > 0);
+        .map((item) => {
+          const row = quantities[String(item.id)];
+
+          return {
+            product_id: item.id,
+            empty_quantity: Number(row?.empty || 0),
+            defective_quantity: Number(row?.defective || 0),
+          };
+        })
+        .filter(
+          (item) => item.empty_quantity > 0 || item.defective_quantity > 0
+        );
 
       await createStockOutLoad({
         driver_id: selectedDriver.id,
@@ -89,6 +127,8 @@ export default function GodownNewDispatchScreen() {
       });
 
       DeviceEventEmitter.emit('NEW_STOCK_OUT');
+      DeviceEventEmitter.emit('NEW_DEFECTIVE');
+
       router.back();
     } catch (error) {
       console.log('Create stock out error:', error);
@@ -101,6 +141,7 @@ export default function GodownNewDispatchScreen() {
     return (
       <ScreenContainer>
         <AppHeader />
+
         <View style={styles.loaderBox}>
           <ActivityIndicator color={COLORS.primary} />
         </View>
@@ -118,7 +159,11 @@ export default function GodownNewDispatchScreen() {
         <Text style={styles.inactiveTab}>Defectives</Text>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.backText}>← Back to Loads</Text>
         </TouchableOpacity>
@@ -127,6 +172,7 @@ export default function GodownNewDispatchScreen() {
 
         <TouchableOpacity
           style={styles.input}
+          activeOpacity={0.85}
           onPress={() => setShowDriverDropdown((prev) => !prev)}
         >
           <Text style={styles.inputText}>
@@ -155,43 +201,53 @@ export default function GodownNewDispatchScreen() {
         )}
 
         <Text style={styles.label}>ERV NUMBER</Text>
+
         <TextInput
           style={styles.input}
           placeholder="Enter 10-digit ERV number"
           placeholderTextColor="#94A3B8"
           value={erv}
           onChangeText={setErv}
+          keyboardType="numeric"
         />
 
         <Text style={styles.label}>DOMESTIC</Text>
+
         <View style={styles.groupCard}>
+          <View style={styles.tableHeader}>
+            <Text style={styles.tableHeaderItem}>ITEM</Text>
+            <Text style={styles.tableHeaderQty}>EMPTY</Text>
+            <Text style={styles.tableHeaderQty}>DEFECTIVE</Text>
+          </View>
+
           {(products.domestic || []).map((item: any) => (
             <QtyRow
               key={item.id}
               label={item.name}
-              value={quantities[String(item.id)] || '0'}
-              onChange={(v) =>
-                setQuantities((prev) => ({
-                  ...prev,
-                  [String(item.id)]: v,
-                }))
+              value={quantities[String(item.id)] || { empty: '0', defective: '0' }}
+              onChange={(field, value) =>
+                updateQuantity(item.id, field, value)
               }
             />
           ))}
         </View>
 
         <Text style={styles.label}>COMMERCIAL</Text>
+
         <View style={styles.groupCard}>
+          <View style={styles.tableHeader}>
+            <Text style={styles.tableHeaderItem}>ITEM</Text>
+            <Text style={styles.tableHeaderQty}>EMPTY</Text>
+            <Text style={styles.tableHeaderQty}>DEFECTIVE</Text>
+          </View>
+
           {(products.commercial || []).map((item: any) => (
             <QtyRow
               key={item.id}
               label={item.name}
-              value={quantities[String(item.id)] || '0'}
-              onChange={(v) =>
-                setQuantities((prev) => ({
-                  ...prev,
-                  [String(item.id)]: v,
-                }))
+              value={quantities[String(item.id)] || { empty: '0', defective: '0' }}
+              onChange={(field, value) =>
+                updateQuantity(item.id, field, value)
               }
             />
           ))}
@@ -199,20 +255,32 @@ export default function GodownNewDispatchScreen() {
 
         <View style={styles.totalBox}>
           <Text style={styles.totalLabel}>TOTAL EMPTIES</Text>
-          <Text style={styles.totalValue}>{total}</Text>
+          <Text style={styles.totalValue}>{totalEmpty}</Text>
+        </View>
+
+        <View style={styles.totalBox}>
+          <Text style={styles.totalLabel}>TOTAL DEFECTIVES</Text>
+          <Text style={[styles.totalValue, styles.defectiveTotal]}>
+            {totalDefective}
+          </Text>
         </View>
 
         <TouchableOpacity
-          style={[styles.submitButton, total === 0 && styles.disabledButton]}
+          style={[
+            styles.submitButton,
+            grandTotal === 0 && styles.disabledButton,
+          ]}
+          activeOpacity={0.85}
           onPress={handleSubmit}
-          disabled={total === 0 || submitting}
+          disabled={grandTotal === 0 || submitting}
         >
           <Ionicons name="checkmark" size={18} color={COLORS.white} />
+
           <Text style={styles.submitText}>
             {submitting ? 'Saving...' : 'Confirm the Return'}
           </Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </ScreenContainer>
   );
 }
@@ -223,8 +291,8 @@ function QtyRow({
   onChange,
 }: {
   label: string;
-  value: string;
-  onChange: (v: string) => void;
+  value: QtyValue;
+  onChange: (field: 'empty' | 'defective', value: string) => void;
 }) {
   return (
     <View style={styles.qtyRow}>
@@ -232,9 +300,16 @@ function QtyRow({
 
       <TextInput
         keyboardType="numeric"
-        value={value}
-        onChangeText={onChange}
+        value={value.empty}
+        onChangeText={(v) => onChange('empty', v)}
         style={styles.qtyInput}
+      />
+
+      <TextInput
+        keyboardType="numeric"
+        value={value.defective}
+        onChangeText={(v) => onChange('defective', v)}
+        style={[styles.qtyInput, styles.defectiveInput]}
       />
     </View>
   );
@@ -246,6 +321,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   topTabs: {
     height: 44,
     backgroundColor: COLORS.white,
@@ -255,6 +331,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
   },
+
   activeTab: {
     color: COLORS.primary,
     fontSize: 13,
@@ -263,21 +340,29 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.primary,
     paddingBottom: 12,
   },
+
   inactiveTab: {
     color: COLORS.textSecondary,
     fontSize: 13,
     fontWeight: '800',
   },
+
+  scroll: {
+    flex: 1,
+  },
+
   content: {
     padding: 16,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
+
   backText: {
     color: COLORS.primary,
     fontSize: 14,
     fontWeight: '800',
     marginBottom: 22,
   },
+
   label: {
     fontSize: 12,
     fontWeight: '900',
@@ -286,6 +371,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 14,
   },
+
   input: {
     minHeight: 54,
     backgroundColor: COLORS.white,
@@ -298,11 +384,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
+
   inputText: {
     fontSize: 15,
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
+
   dropdown: {
     backgroundColor: '#E5E5E5',
     borderRadius: 8,
@@ -311,14 +399,17 @@ const styles = StyleSheet.create({
     elevation: 4,
     zIndex: 20,
   },
+
   dropdownItem: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 9,
   },
+
   dropdownText: {
     fontSize: 14,
     color: COLORS.textPrimary,
   },
+
   groupCard: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -326,24 +417,54 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
+
+  tableHeader: {
+    height: 38,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+
+  tableHeaderItem: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.6,
+  },
+
+  tableHeaderQty: {
+    width: 94,
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.6,
+    textAlign: 'center',
+  },
+
   qtyRow: {
-    minHeight: 64,
+    minHeight: 72,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 10,
   },
+
   qtyLabel: {
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
     flex: 1,
   },
+
   qtyInput: {
-    width: 112,
-    height: 42,
+    width: 94,
+    height: 44,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: '#F8FAFC',
@@ -353,6 +474,12 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: COLORS.textSecondary,
   },
+
+  defectiveInput: {
+    borderColor: '#FCA5A5',
+    backgroundColor: '#F8FAFC',
+  },
+
   totalBox: {
     marginTop: 18,
     height: 58,
@@ -365,16 +492,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+
   totalLabel: {
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
+
   totalValue: {
     fontSize: 24,
     fontWeight: '900',
     color: COLORS.primary,
   },
+
+  defectiveTotal: {
+    color: '#EF4444',
+  },
+
   submitButton: {
     height: 58,
     backgroundColor: COLORS.green,
@@ -385,9 +519,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+
   disabledButton: {
     opacity: 0.45,
   },
+
   submitText: {
     color: COLORS.white,
     fontSize: 16,

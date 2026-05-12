@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -32,8 +32,7 @@ export default function NewBookingScreen() {
   const [quantity, setQuantity] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [amount, setAmount] = useState('950');
-  const [emptyCollected, setEmptyCollected] = useState(false);
-
+  const [emptyCylinderQty, setEmptyCylinderQty] = useState(0);
   const [products, setProducts] = useState<ProductSearchItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<ProductSearchItem | null>(null);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -107,17 +106,32 @@ export default function NewBookingScreen() {
 
       setSubmitting(true);
 
+      const emptyCylinderStatus =
+        emptyCylinderQty === 0
+          ? 'PENDING'
+          : emptyCylinderQty === quantity
+            ? 'DELIVERED'
+            : 'PARTIAL_PENDING';
+
       const response = await api.post('/drivers/sales', {
         driver_id: DRIVER_ID,
         customer_name: customerName,
         phone,
         address,
         cylinder_type: cylinderType,
+
         product_id: selectedProduct.id,
         quantity,
+
         payment_method: paymentMethod,
         amount: Number(amount),
-        empty_cylinder_collected: emptyCollected,
+
+        empty_cylinder_collected: emptyCylinderQty > 0,
+
+        delivered_qty: quantity,
+        empty_cylinder_qty: Number(emptyCylinderQty || 0),
+        empty_cylinder_status: emptyCylinderStatus,
+        defective_qty: 0,
       });
 
       if (response.data?.success) {
@@ -132,7 +146,7 @@ export default function NewBookingScreen() {
         setQuantity(1);
         setPaymentMethod('CASH');
         setAmount('950');
-        setEmptyCollected(false);
+        setEmptyCylinderQty(0);
         setProducts([]);
         setShowDropdown(false);
       } else {
@@ -328,40 +342,25 @@ export default function NewBookingScreen() {
               keyboardType="numeric"
             />
 
-            <Text style={styles.label}>Empty Cylinder Collected?</Text>
-            <View style={styles.toggleRow}>
+            <Text style={styles.label}>Empty Cylinders Collected</Text>
+
+            <View style={styles.qtyRow}>
               <TouchableOpacity
-                style={[
-                  styles.typeBtn,
-                  emptyCollected ? styles.activeTypeBtn : styles.inactiveWhiteBtn,
-                ]}
-                onPress={() => setEmptyCollected(true)}
+                style={styles.qtyBtn}
+                onPress={() => setEmptyCylinderQty((prev) => Math.max(0, prev - 1))}
               >
-                <Text
-                  style={[
-                    styles.typeBtnText,
-                    emptyCollected ? styles.activeTypeBtnText : styles.inactiveTypeBtnText,
-                  ]}
-                >
-                  Yes
-                </Text>
+                <Text style={styles.qtyBtnText}>-</Text>
               </TouchableOpacity>
 
+              <Text style={styles.qtyValue}>{emptyCylinderQty}</Text>
+
               <TouchableOpacity
-                style={[
-                  styles.typeBtn,
-                  !emptyCollected ? styles.activeTypeBtn : styles.inactiveWhiteBtn,
-                ]}
-                onPress={() => setEmptyCollected(false)}
+                style={styles.qtyBtn}
+                onPress={() =>
+                  setEmptyCylinderQty((prev) => Math.min(quantity, prev + 1))
+                }
               >
-                <Text
-                  style={[
-                    styles.typeBtnText,
-                    !emptyCollected ? styles.activeTypeBtnText : styles.inactiveTypeBtnText,
-                  ]}
-                >
-                  No
-                </Text>
+                <Text style={styles.qtyBtnText}>+</Text>
               </TouchableOpacity>
             </View>
 
@@ -373,7 +372,7 @@ export default function NewBookingScreen() {
               {submitting ? (
                 <ActivityIndicator color={COLORS.white} />
               ) : (
-                    <Text style={styles.submitBtnText}> Confirm Delivery</Text>
+                <Text style={styles.submitBtnText}> Confirm Delivery</Text>
               )}
             </TouchableOpacity>
           </View>
