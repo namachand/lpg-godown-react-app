@@ -1,31 +1,99 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+
 import AppHeader from '../components/common/AppHeader';
 import ScreenContainer from '../components/common/ScreenContainer';
 import CashDenominationModal from '../components/ui/CashDenominationModal';
-import SummaryCard from '../components/ui/SummaryCard';
 import { COLORS } from '../constants/colors';
 import api from '../services/api';
-import {
-  CollectionHistoryResponse,
-  CollectionSummaryResponse
-} from '../types';
 
 const DRIVER_ID = 2;
 
-const formatTime = (dateString: string) => {
+type CollectionStatus =
+  | 'ASSIGNED'
+  | 'PENDING'
+  | 'SETTLED'
+  | 'APPROVED'
+  | null;
+
+type CollectionCardData = {
+  amount: number;
+  count: number;
+  status: CollectionStatus;
+  transactions: any[];
+};
+
+type CollectionSummaryResponse = {
+  summary: {
+    cashCollected: number;
+    upiCollected: number;
+    totalCollected: number;
+  };
+  settlements: {
+    cashAssigned: CollectionCardData;
+    cashPending: CollectionCardData;
+    upiAssigned: CollectionCardData;
+    upiPending: CollectionCardData;
+  };
+};
+
+type CollectionHistoryTransaction = {
+  saleId: number;
+  customerName: string;
+  amount: number;
+  paymentMode: string;
+  deliveredAt: string;
+  status: CollectionStatus;
+};
+
+type CollectionHistoryDayItem = {
+  date: string;
+  totalAmount: number;
+  summary: {
+    cash: {
+      amount: number;
+      status: CollectionStatus;
+      settledAt: string | null;
+    };
+    upi: {
+      amount: number;
+      status: CollectionStatus;
+      settledAt: string | null;
+    };
+  };
+  transactions: CollectionHistoryTransaction[];
+};
+
+type CollectionHistoryResponse = {
+  items: CollectionHistoryDayItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalItems: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+};
+
+const formatAmount = (value?: number) =>
+  `₹${Number(value || 0).toLocaleString('en-IN')}`;
+
+const formatTime = (dateString?: string | null) => {
+  if (!dateString) return '';
+
   try {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString([], {
+    return new Date(dateString).toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -36,8 +104,7 @@ const formatTime = (dateString: string) => {
 
 const formatDateLabel = (dateString: string) => {
   try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', {
+    return new Date(dateString).toLocaleDateString('en-GB', {
       weekday: 'short',
       day: '2-digit',
       month: 'short',
@@ -48,27 +115,148 @@ const formatDateLabel = (dateString: string) => {
   }
 };
 
-export default function CollectionScreen() {
-  const [activeTab, setActiveTab] = useState<'summary' | 'history'>('summary');
+const getPaymentLabel = (method?: string) => {
+  const value = String(method || '').toUpperCase();
 
-  const [summaryData, setSummaryData] = useState<CollectionSummaryResponse | null>(null);
-  const [historyData, setHistoryData] = useState<CollectionHistoryResponse | null>(null);
+  if (value === 'CARD' || value === 'ONLINE') return 'Online';
+  if (value === 'CASH') return 'Cash';
+  if (value === 'UPI') return 'UPI';
+
+  return value || 'N/A';
+};
+
+const TEXT_BLACK = COLORS.textPrimary;
+
+function CollectionActionCard({
+  type,
+  title,
+  amount,
+  count,
+  status,
+  loading,
+  onPress,
+}: {
+  type: 'CASH' | 'UPI';
+  title: string;
+  amount: number;
+  count: number;
+  status: CollectionStatus;
+  loading: boolean;
+  onPress: () => void;
+}) {
+  const isAssigned = status === 'ASSIGNED';
+  const isPending = status === 'PENDING';
+
+  const icon = type === 'CASH' ? 'wallet-outline' : 'phone-portrait-outline';
+  const color = type === 'CASH' ? COLORS.green : COLORS.primary;
+  const bg = type === 'CASH' ? '#EAFBF0' : '#EEF4FF';
+
+  return (
+    <View style={styles.collectionCard}>
+      <View style={styles.collectionTopRow}>
+        <View style={styles.collectionTitleRow}>
+          <View style={[styles.iconWrap, { backgroundColor: bg }]}>
+            <Ionicons name={icon} size={18} color={color} />
+          </View>
+
+          <View>
+            <Text style={styles.collectionTitle}>{title}</Text>
+            <Text style={styles.collectionAmount}>
+              {formatAmount(amount)}
+            </Text>
+          </View>
+        </View>
+
+        {isPending && (
+          <View style={styles.pendingPill}>
+            <Ionicons
+              name="time-outline"
+              size={14}
+              color={COLORS.orange}
+            />
+            <Text style={styles.pendingPillText}>
+              Pending for Cashier Approval
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.collectionInfoRow}>
+        <Text style={styles.collectionInfoText}>
+          {count} {isAssigned ? 'assigned' : 'pending'} payments
+        </Text>
+
+        <Text style={styles.collectionInfoAmount}>
+          {formatAmount(amount)}
+        </Text>
+      </View>
+
+      {isAssigned && (
+        <TouchableOpacity
+          style={[
+            styles.collectionButton,
+            {
+              backgroundColor:
+                type === 'CASH' ? COLORS.green : COLORS.primary,
+            },
+          ]}
+          onPress={onPress}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color={COLORS.white} />
+          ) : (
+            <>
+              <Ionicons
+                name={
+                  type === 'CASH'
+                    ? 'cash-outline'
+                    : 'card-outline'
+                }
+                size={16}
+                color={COLORS.white}
+              />
+              <Text style={styles.collectionButtonText}>
+                Settle Amount
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+export default function CollectionScreen() {
+  const [activeTab, setActiveTab] = useState<
+    'summary' | 'history'
+  >('summary');
+
+  const [summaryData, setSummaryData] =
+    useState<CollectionSummaryResponse | null>(null);
+
+  const [historyData, setHistoryData] =
+    useState<CollectionHistoryResponse | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
   const [error, setError] = useState('');
-  const [settlingMethod, setSettlingMethod] = useState<'UPI' | 'TOTAL_UPI' | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
+
+  const [settlingMethod, setSettlingMethod] =
+    useState<'UPI' | 'TOTAL_UPI' | null>(null);
 
   const [cashModalVisible, setCashModalVisible] = useState(false);
   const [cashSubmitting, setCashSubmitting] = useState(false);
 
   const fetchCollectionSummary = useCallback(async () => {
-    const response = await api.get(`/drivers/${DRIVER_ID}/collection-summary`);
+    const response = await api.get(
+      `/drivers/${DRIVER_ID}/collection-summary`
+    );
+
     if (response.data?.success) {
       setSummaryData(response.data.data);
-    } else {
-      throw new Error('Failed to load collection summary');
     }
   }, []);
 
@@ -76,17 +264,16 @@ export default function CollectionScreen() {
     const response = await api.get(
       `/drivers/${DRIVER_ID}/collection-history?page=${page}&limit=2`
     );
+
     if (response.data?.success) {
       setHistoryData(response.data.data);
-    } else {
-      throw new Error('Failed to load collection history');
     }
   }, []);
 
   const loadScreen = useCallback(async () => {
     try {
-      setError('');
       setLoading(true);
+      setError('');
 
       if (activeTab === 'summary') {
         await fetchCollectionSummary();
@@ -94,12 +281,16 @@ export default function CollectionScreen() {
         await fetchCollectionHistory(historyPage);
       }
     } catch (err: any) {
-      console.error('Collection screen load error:', err?.response?.data || err.message);
       setError('Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, fetchCollectionHistory, fetchCollectionSummary, historyPage]);
+  }, [
+    activeTab,
+    fetchCollectionSummary,
+    fetchCollectionHistory,
+    historyPage,
+  ]);
 
   useEffect(() => {
     loadScreen();
@@ -108,62 +299,75 @@ export default function CollectionScreen() {
   const onRefresh = async () => {
     try {
       setRefreshing(true);
+
       if (activeTab === 'summary') {
         await fetchCollectionSummary();
       } else {
         await fetchCollectionHistory(historyPage);
       }
-    } catch (err) {
-      console.error(err);
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const refreshAfterSettlement = async () => {
+    await fetchCollectionSummary();
+    await fetchCollectionHistory(historyPage);
   };
 
   const handleSettleUpi = async () => {
     try {
       setSettlingMethod('UPI');
 
-      const response = await api.put(`/drivers/${DRIVER_ID}/settle-collections`, {
-        method: 'UPI',
-      });
+      const response = await api.put(
+        `/drivers/${DRIVER_ID}/settle-collections`,
+        {
+          method: 'UPI',
+        }
+      );
 
       if (response.data?.success) {
-        Alert.alert('Success', 'UPI settlements settled successfully');
-        await fetchCollectionSummary();
-      } else {
-        Alert.alert('Error', response.data?.message || 'Failed to settle collections');
+        Alert.alert(
+          'Success',
+          'UPI collection sent for cashier approval'
+        );
+
+        await refreshAfterSettlement();
       }
     } catch (err: any) {
-      console.error('handleSettleUpi error:', err?.response?.data || err.message);
       Alert.alert(
         'Error',
-        err?.response?.data?.message || 'Failed to settle collections'
+        err?.response?.data?.message || 'Failed to settle UPI'
       );
     } finally {
       setSettlingMethod(null);
     }
   };
 
-  const handleSettleTotalUpi = async () => {
+  const handleSettleTotal = async () => {
     try {
       setSettlingMethod('TOTAL_UPI');
 
-      const response = await api.put(`/drivers/${DRIVER_ID}/settle-collections`, {
-        method: 'TOTAL_UPI',
-      });
+      const response = await api.put(
+        `/drivers/${DRIVER_ID}/settle-collections`,
+        {
+          method: 'TOTAL_UPI',
+        }
+      );
 
       if (response.data?.success) {
-        Alert.alert('Success', 'Total collection settled successfully in UPI mode');
-        await fetchCollectionSummary();
-      } else {
-        Alert.alert('Error', response.data?.message || 'Failed to settle total collection');
+        Alert.alert(
+          'Success',
+          'Collection sent for cashier approval'
+        );
+
+        await refreshAfterSettlement();
       }
     } catch (err: any) {
-      console.error('handleSettleTotalUpi error:', err?.response?.data || err.message);
       Alert.alert(
         'Error',
-        err?.response?.data?.message || 'Failed to settle total collection'
+        err?.response?.data?.message ||
+          'Failed to settle total collection'
       );
     } finally {
       setSettlingMethod(null);
@@ -175,45 +379,49 @@ export default function CollectionScreen() {
     enteredAmount,
   }: {
     denominations: {
-      "500": number;
-      "100": number;
-      "50": number;
-      "20": number;
-      "10": number;
+      '500': number;
+      '100': number;
+      '50': number;
+      '20': number;
+      '10': number;
       coins: number;
     };
     enteredAmount: number;
   }) => {
     try {
-      const expectedAmount = summaryData?.summary?.cashCollected ?? 0;
+      const expectedAmount =
+        summaryData?.settlements?.cashAssigned?.amount ?? 0;
 
       if (enteredAmount !== expectedAmount) {
         Alert.alert(
           'Amount mismatch',
-          `Entered ₹${enteredAmount} should match expected ₹${expectedAmount}`
+          `Entered ₹${enteredAmount} should match assigned cash ₹${expectedAmount}`
         );
+
         return;
       }
 
       setCashSubmitting(true);
 
-      const response = await api.put(`/drivers/${DRIVER_ID}/settle-collections`, {
-        method: 'CASH',
-        denominations,
-      });
+      const response = await api.put(
+        `/drivers/${DRIVER_ID}/settle-collections`,
+        {
+          method: 'CASH',
+          denominations,
+        }
+      );
 
       if (response.data?.success) {
         setCashModalVisible(false);
-        Alert.alert('Success', 'Cash settlements settled successfully');
-        await fetchCollectionSummary();
-      } else {
-        Alert.alert('Error', response.data?.message || 'Failed to settle cash');
+
+        Alert.alert(
+          'Success',
+          'Cash collection sent for cashier approval'
+        );
+
+        await refreshAfterSettlement();
       }
     } catch (err: any) {
-      console.error(
-        'handleSubmitCashDenominations error:',
-        err?.response?.data || err.message
-      );
       Alert.alert(
         'Error',
         err?.response?.data?.message || 'Failed to settle cash'
@@ -223,29 +431,57 @@ export default function CollectionScreen() {
     }
   };
 
+  const cashAssigned = summaryData?.settlements?.cashAssigned;
+  const cashPending = summaryData?.settlements?.cashPending;
+
+  const upiAssigned = summaryData?.settlements?.upiAssigned;
+  const upiPending = summaryData?.settlements?.upiPending;
+
+  const totalAmount =
+    summaryData?.summary?.totalCollected ?? 0;
+
+  const assignedTotal =
+    Number(cashAssigned?.amount || 0) +
+    Number(upiAssigned?.amount || 0);
+
   return (
     <ScreenContainer
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+        />
       }
     >
       <AppHeader />
 
-      <View style={styles.content}>
-        <View style={styles.segmentWrap}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.tabContainer}>
           <TouchableOpacity
-            style={[styles.segmentTab, activeTab === 'summary' && styles.segmentTabActive]}
+            style={[
+              styles.tabButton,
+              activeTab === 'summary' && styles.activeTabButton,
+            ]}
             onPress={() => setActiveTab('summary')}
           >
             <Ionicons
               name="card-outline"
-              size={14}
-              color={activeTab === 'summary' ? COLORS.textPrimary : COLORS.textSecondary}
+              size={18}
+              color={
+                activeTab === 'summary'
+                  ? TEXT_BLACK
+                  : COLORS.textSecondary
+              }
             />
+
             <Text
               style={[
-                styles.segmentText,
-                activeTab === 'summary' && styles.segmentTextActive,
+                styles.tabText,
+                activeTab === 'summary' &&
+                  styles.activeTabText,
               ]}
             >
               Collection Summary
@@ -253,18 +489,28 @@ export default function CollectionScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.segmentTab, activeTab === 'history' && styles.segmentTabActive]}
+            style={[
+              styles.tabButton,
+              activeTab === 'history' &&
+                styles.activeTabButton,
+            ]}
             onPress={() => setActiveTab('history')}
           >
             <Ionicons
               name="time-outline"
-              size={14}
-              color={activeTab === 'history' ? COLORS.textPrimary : COLORS.textSecondary}
+              size={18}
+              color={
+                activeTab === 'history'
+                  ? TEXT_BLACK
+                  : COLORS.textSecondary
+              }
             />
+
             <Text
               style={[
-                styles.segmentText,
-                activeTab === 'history' && styles.segmentTextActive,
+                styles.tabText,
+                activeTab === 'history' &&
+                  styles.activeTabText,
               ]}
             >
               History
@@ -273,333 +519,309 @@ export default function CollectionScreen() {
         </View>
 
         {loading ? (
-          <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.infoText}>Loading...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.centerBox}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
+          <ActivityIndicator
+            size="large"
+            color={COLORS.primary}
+            style={{ marginTop: 40 }}
+          />
         ) : activeTab === 'summary' ? (
           <>
-            <View style={styles.topCards}>
-              <View style={styles.miniCard}>
-                <View style={[styles.iconWrap, { backgroundColor: COLORS.greenSoft }]}>
-                  <Ionicons name="wallet-outline" size={18} color={COLORS.green} />
+            <View style={styles.summaryGrid}>
+              <View style={styles.summaryCard}>
+                <View
+                  style={[
+                    styles.summaryIconWrap,
+                    { backgroundColor: '#EAFBF0' },
+                  ]}
+                >
+                  <Ionicons
+                    name="wallet-outline"
+                    size={22}
+                    color={COLORS.green}
+                  />
                 </View>
-                <Text style={styles.miniValue}>
-                  ₹{summaryData?.summary?.cashCollected ?? 0}
+
+                <Text style={styles.summaryAmount}>
+                  {formatAmount(
+                    summaryData?.summary?.cashCollected
+                  )}
                 </Text>
-                <Text style={styles.miniLabel}>Cash Collected</Text>
+
+                <Text style={styles.summaryLabel}>
+                  Cash Collected
+                </Text>
               </View>
 
-              <View style={styles.miniCard}>
-                <View style={[styles.iconWrap, { backgroundColor: COLORS.blueSoft }]}>
+              <View style={styles.summaryCard}>
+                <View
+                  style={[
+                    styles.summaryIconWrap,
+                    { backgroundColor: '#EEF4FF' },
+                  ]}
+                >
                   <Ionicons
                     name="phone-portrait-outline"
-                    size={18}
+                    size={22}
                     color={COLORS.primary}
                   />
                 </View>
-                <Text style={styles.miniValue}>
-                  ₹{summaryData?.summary?.upiCollected ?? 0}
+
+                <Text style={styles.summaryAmount}>
+                  {formatAmount(
+                    summaryData?.summary?.upiCollected
+                  )}
                 </Text>
-                <Text style={styles.miniLabel}>UPI Payments</Text>
+
+                <Text style={styles.summaryLabel}>
+                  UPI Payments
+                </Text>
               </View>
             </View>
 
-            {summaryData?.settlements?.cash?.map((item) => (
-              <SummaryCard
-                key={`cash-${item.id}`}
-                icon="wallet-outline"
-                iconBg={COLORS.greenSoft}
-                iconColor={COLORS.green}
+            {(cashAssigned?.amount ?? 0) > 0 && (
+              <CollectionActionCard
+                type="CASH"
                 title="Cash Collection"
-                amount={`₹${item.amount ?? 0}`}
-                customer={item.customerName}
-                time={formatTime(item.createdAt)}
-                buttonText="Settle Cash Collection"
-                buttonColor={COLORS.buttonGreen}
+                amount={cashAssigned?.amount ?? 0}
+                count={cashAssigned?.count ?? 0}
+                status="ASSIGNED"
+                loading={cashSubmitting}
                 onPress={() => setCashModalVisible(true)}
+              />
+            )}
+
+            {(cashPending?.amount ?? 0) > 0 && (
+              <CollectionActionCard
+                type="CASH"
+                title="Cash Collection"
+                amount={cashPending?.amount ?? 0}
+                count={cashPending?.count ?? 0}
+                status="PENDING"
                 loading={false}
+                onPress={() => {}}
               />
-            ))}
+            )}
 
-            {summaryData?.settlements?.upi?.map((item) => (
-              <SummaryCard
-                key={`upi-${item.id}`}
-                icon="phone-portrait-outline"
-                iconBg={COLORS.blueSoft}
-                iconColor={COLORS.primary}
+            {(upiAssigned?.amount ?? 0) > 0 && (
+              <CollectionActionCard
+                type="UPI"
                 title="UPI Payments"
-                amount={`₹${item.amount ?? 0}`}
-                customer={item.customerName}
-                time={formatTime(item.createdAt)}
-                buttonText="Settle UPI Payments"
-                buttonColor={COLORS.primary}
-                onPress={handleSettleUpi}
+                amount={upiAssigned?.amount ?? 0}
+                count={upiAssigned?.count ?? 0}
+                status="ASSIGNED"
                 loading={settlingMethod === 'UPI'}
+                onPress={handleSettleUpi}
               />
-            ))}
+            )}
 
-            <View style={styles.totalCard}>
-              <View style={styles.totalHeaderRow}>
-                <View style={[styles.iconWrap, { backgroundColor: COLORS.blueSoft }]}>
-                  <Ionicons name="card-outline" size={18} color={COLORS.primary} />
-                </View>
-                <View>
-                  <Text style={styles.totalTitle}>Total Collection</Text>
-                  <Text style={styles.totalValue}>
-                    ₹{summaryData?.summary?.totalCollected ?? 0}
-                  </Text>
-                </View>
-              </View>
+            {(upiPending?.amount ?? 0) > 0 && (
+              <CollectionActionCard
+                type="UPI"
+                title="UPI Payments"
+                amount={upiPending?.amount ?? 0}
+                count={upiPending?.count ?? 0 }
+                status="PENDING"
+                loading={false}
+                onPress={() => {}}
+              />
+            )}
 
-              <TouchableOpacity
-                style={[
-                  styles.totalButton,
-                  settlingMethod === 'TOTAL_UPI' && styles.totalButtonDisabled,
-                ]}
-                onPress={handleSettleTotalUpi}
-                disabled={settlingMethod === 'TOTAL_UPI'}
-              >
-                {settlingMethod === 'TOTAL_UPI' ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <>
-                    <Ionicons name="card-outline" size={16} color={COLORS.white} />
-                    <Text style={styles.totalButtonText}>
-                      Settle Total — Online Payment
+            {assignedTotal > 0 && (
+              <View style={styles.totalCard}>
+                <View style={styles.collectionTitleRow}>
+                  <View
+                    style={[
+                      styles.iconWrap,
+                      { backgroundColor: '#EEF4FF' },
+                    ]}
+                  >
+                    <Ionicons
+                      name="card-outline"
+                      size={18}
+                      color={COLORS.primary}
+                    />
+                  </View>
+
+                  <View>
+                    <Text style={styles.collectionTitle}>
+                      Total Collection
                     </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
+
+                    <Text style={styles.collectionAmount}>
+                      {formatAmount(totalAmount)}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.collectionButton,
+                    { backgroundColor: COLORS.primary },
+                  ]}
+                  onPress={handleSettleTotal}
+                  disabled={
+                    settlingMethod === 'TOTAL_UPI'
+                  }
+                >
+                  {settlingMethod === 'TOTAL_UPI' ? (
+                    <ActivityIndicator
+                      color={COLORS.white}
+                    />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="card-outline"
+                        size={16}
+                        color={COLORS.white}
+                      />
+
+                      <Text
+                        style={styles.collectionButtonText}
+                      >
+                        Settle Total — Online Payment
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
           </>
         ) : (
           <>
-            {historyData?.items?.map((dayItem, index) => (
-              <View key={`${dayItem.date}-${index}`} style={styles.historyCard}>
+            {historyData?.items?.map((group, index) => (
+              <View key={index} style={styles.historyGroup}>
                 <View style={styles.historyHeader}>
                   <View style={styles.historyDateRow}>
                     <Ionicons
                       name="calendar-outline"
-                      size={16}
+                      size={18}
                       color={COLORS.textSecondary}
                     />
-                    <Text style={styles.historyDateText}>
-                      {index === 0 && historyPage === 1
-                        ? `Today — ${formatDateLabel(dayItem.date)}`
-                        : formatDateLabel(dayItem.date)}
+
+                    <Text style={styles.historyDate}>
+                      {formatDateLabel(group.date)}
                     </Text>
                   </View>
-                  <Text style={styles.historyTotal}>₹{dayItem.totalAmount}</Text>
+
+                  <Text style={styles.historyTotal}>
+                    {formatAmount(group.totalAmount)}
+                  </Text>
                 </View>
 
-                <View style={styles.badgeSummaryRow}>
-                  <View
-                    style={[
-                      styles.methodSummaryBadge,
-                      dayItem.summary.cash.status === 'SETTLED'
-                        ? styles.settledBadge
-                        : styles.pendingBadge,
-                    ]}
-                  >
-                    <View style={styles.badgeInnerRow}>
-                      <Ionicons
-                        name={
-                          dayItem.summary.cash.status === 'SETTLED'
-                            ? 'checkmark-circle-outline'
-                            : 'time-outline'
-                        }
-                        size={14}
-                        color={
-                          dayItem.summary.cash.status === 'SETTLED'
-                            ? COLORS.green
-                            : COLORS.orange
-                        }
-                      />
-                      <View>
-                        <Text
-                          style={[
-                            styles.methodSummaryText,
-                            {
-                              color:
-                                dayItem.summary.cash.status === 'SETTLED'
-                                  ? COLORS.green
-                                  : COLORS.orange,
-                            },
-                          ]}
-                        >
-                          Cash: ₹{dayItem.summary.cash.amount}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.methodSummarySubText,
-                            {
-                              color:
-                                dayItem.summary.cash.status === 'SETTLED'
-                                  ? COLORS.green
-                                  : COLORS.orange,
-                            },
-                          ]}
-                        >
-                          {dayItem.summary.cash.status === 'SETTLED'
-                            ? `Settled at ${formatTime(dayItem.summary.cash.settledAt || '')}`
-                            : 'Pending'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
+                <View style={styles.summaryStatusRow}>
+                  {group.summary.cash.amount > 0 && (
+                    <View style={styles.historyStatusCard}>
+                      <Text style={styles.historyStatusTitle}>
+                        Cash:{' '}
+                        {formatAmount(
+                          group.summary.cash.amount
+                        )}
+                      </Text>
 
-                  <View
-                    style={[
-                      styles.methodSummaryBadge,
-                      dayItem.summary.upi.status === 'SETTLED'
-                        ? styles.settledBadge
-                        : styles.pendingBadge,
-                    ]}
-                  >
-                    <View style={styles.badgeInnerRow}>
-                      <Ionicons
-                        name={
-                          dayItem.summary.upi.status === 'SETTLED'
-                            ? 'checkmark-circle-outline'
-                            : 'time-outline'
-                        }
-                        size={14}
-                        color={
-                          dayItem.summary.upi.status === 'SETTLED'
-                            ? COLORS.green
-                            : COLORS.orange
-                        }
-                      />
-                      <View>
-                        <Text
-                          style={[
-                            styles.methodSummaryText,
-                            {
-                              color:
-                                dayItem.summary.upi.status === 'SETTLED'
-                                  ? COLORS.green
-                                  : COLORS.orange,
-                            },
-                          ]}
-                        >
-                          UPI: ₹{dayItem.summary.upi.amount}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.methodSummarySubText,
-                            {
-                              color:
-                                dayItem.summary.upi.status === 'SETTLED'
-                                  ? COLORS.green
-                                  : COLORS.orange,
-                            },
-                          ]}
-                        >
-                          {dayItem.summary.upi.status === 'SETTLED'
-                            ? `Settled at ${formatTime(dayItem.summary.upi.settledAt || '')}`
-                            : 'Pending'}
-                        </Text>
-                      </View>
+                      <Text
+                        style={styles.historyStatusText}
+                      >
+                        Settled at{' '}
+                        {formatTime(
+                          group.summary.cash.settledAt
+                        )}
+                      </Text>
                     </View>
-                  </View>
+                  )}
+
+                  {group.summary.upi.amount > 0 && (
+                    <View style={styles.historyStatusCard}>
+                      <Text style={styles.historyStatusTitle}>
+                        UPI:{' '}
+                        {formatAmount(
+                          group.summary.upi.amount
+                        )}
+                      </Text>
+
+                      <Text
+                        style={styles.historyStatusText}
+                      >
+                        Settled at{' '}
+                        {formatTime(
+                          group.summary.upi.settledAt
+                        )}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
-                {dayItem.transactions.map((txn) => (
-                  <View key={txn.saleId} style={styles.transactionRow}>
-                    <View style={styles.transactionLeft}>
+                {group.transactions.map(
+                  (item, transactionIndex) => (
+                    <View
+                      key={transactionIndex}
+                      style={styles.historyTransaction}
+                    >
                       <View
                         style={[
-                          styles.transactionIconWrap,
+                          styles.iconWrap,
                           {
                             backgroundColor:
-                              txn.paymentMode === 'CASH'
-                                ? COLORS.greenSoft
-                                : txn.paymentMode === 'UPI'
-                                  ? COLORS.blueSoft
-                                  : COLORS.orangeSoft,
+                              item.paymentMode === 'CASH'
+                                ? '#EAFBF0'
+                                : '#EEF4FF',
                           },
                         ]}
                       >
                         <Ionicons
                           name={
-                            txn.paymentMode === 'CASH'
+                            item.paymentMode === 'CASH'
                               ? 'wallet-outline'
-                              : txn.paymentMode === 'UPI'
-                                ? 'phone-portrait-outline'
-                                : 'card-outline'
+                              : 'phone-portrait-outline'
                           }
-                          size={16}
+                          size={18}
                           color={
-                            txn.paymentMode === 'CASH'
+                            item.paymentMode === 'CASH'
                               ? COLORS.green
-                              : txn.paymentMode === 'UPI'
-                                ? COLORS.primary
-                                : COLORS.orange
+                              : COLORS.primary
                           }
                         />
                       </View>
 
-                      <View>
-                        <Text style={styles.transactionName}>{txn.customerName}</Text>
-                        <Text style={styles.transactionMeta}>
-                          {formatTime(txn.deliveredAt)} ·{' '}
-                          {txn.paymentMode === 'CARD' ? 'Online' : txn.paymentMode}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.customerName}>
+                          {item.customerName}
+                        </Text>
+
+                        <Text style={styles.customerMeta}>
+                          {formatTime(item.deliveredAt)} ·{' '}
+                          {getPaymentLabel(
+                            item.paymentMode
+                          )}
                         </Text>
                       </View>
-                    </View>
 
-                    <View style={styles.transactionRight}>
-                      <Text style={styles.transactionAmount}>₹{txn.amount}</Text>
-                      <Text style={styles.paidText}>Paid</Text>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={styles.transactionAmount}>
+                          {formatAmount(item.amount)}
+                        </Text>
+
+                        <View style={styles.paidPill}>
+                          <Text style={styles.paidText}>
+                            Paid
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  )
+                )}
               </View>
             ))}
-
-            <View style={styles.paginationWrap}>
-              <TouchableOpacity
-                style={[
-                  styles.pageButton,
-                  !historyData?.pagination?.hasPrevPage && styles.pageButtonDisabled,
-                ]}
-                disabled={!historyData?.pagination?.hasPrevPage}
-                onPress={() => setHistoryPage((prev) => Math.max(1, prev - 1))}
-              >
-                <Ionicons name="chevron-back" size={16} color={COLORS.textSecondary} />
-                <Text style={styles.pageButtonText}>Newer</Text>
-              </TouchableOpacity>
-
-              <Text style={styles.pageIndicator}>
-                Page {historyData?.pagination?.page || 1} of{' '}
-                {historyData?.pagination?.totalPages || 1}
-              </Text>
-
-              <TouchableOpacity
-                style={[
-                  styles.pageButton,
-                  !historyData?.pagination?.hasNextPage && styles.pageButtonDisabled,
-                ]}
-                disabled={!historyData?.pagination?.hasNextPage}
-                onPress={() => setHistoryPage((prev) => prev + 1)}
-              >
-                <Text style={styles.pageButtonText}>Older</Text>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-            </View>
           </>
         )}
-      </View>
+      </ScrollView>
 
       <CashDenominationModal
         visible={cashModalVisible}
-        expectedAmount={summaryData?.summary?.cashCollected ?? 0}
         loading={cashSubmitting}
+        expectedAmount={
+          summaryData?.settlements?.cashAssigned
+            ?.amount ?? 0
+        }
         onClose={() => setCashModalVisible(false)}
         onSubmit={handleSubmitCashDenominations}
       />
@@ -610,263 +832,279 @@ export default function CollectionScreen() {
 const styles = StyleSheet.create({
   content: {
     padding: 16,
+    paddingBottom: 120,
   },
 
-  segmentWrap: {
+  tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#F1F1F3',
-    borderRadius: 14,
+    backgroundColor: '#F1F1F1',
+    borderRadius: 18,
     padding: 4,
-    marginBottom: 14,
-  },
-  segmentTab: {
-    flex: 1,
-    height: 36,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  segmentTabActive: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  segmentText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  segmentTextActive: {
-    color: COLORS.textPrimary,
+    marginBottom: 18,
   },
 
-  topCards: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  miniCard: {
+  tabButton: {
     flex: 1,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  miniValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    marginBottom: 4,
-  },
-  miniLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-
-  totalCard: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 4,
-  },
-  totalHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  totalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  totalValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    marginTop: 2,
-  },
-  totalButton: {
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: COLORS.primary,
+    height: 48,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  totalButtonDisabled: {
-    opacity: 0.7,
+
+  activeTabButton: {
+    backgroundColor: COLORS.white,
   },
-  totalButtonText: {
-    color: COLORS.white,
-    fontSize: 15,
+
+  tabText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+
+  activeTabText: {
+    color: TEXT_BLACK,
+  },
+
+  summaryGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+
+  summaryCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderRadius: 22,
+    paddingVertical: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+  },
+
+  summaryIconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+
+  summaryAmount: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: TEXT_BLACK,
+    marginBottom: 8,
+  },
+
+  summaryLabel: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
     fontWeight: '700',
   },
 
-  historyCard: {
+  collectionCard: {
     backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: 18,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 16,
+    borderColor: '#ECECEC',
+    marginBottom: 18,
   },
-  historyHeader: {
+
+  collectionTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  historyDateRow: {
+
+  collectionTitleRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+
+  iconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  collectionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: TEXT_BLACK,
+  },
+
+  collectionAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: TEXT_BLACK,
+    marginTop: 2,
+  },
+
+  pendingPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    backgroundColor: '#FFF6E9',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    maxWidth: 160,
   },
-  historyDateText: {
+
+  pendingPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.orange,
+  },
+
+  collectionInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+
+  collectionInfoText: {
     fontSize: 15,
     fontWeight: '700',
-    color: COLORS.textPrimary,
+    color: TEXT_BLACK,
   },
+
+  collectionInfoAmount: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: TEXT_BLACK,
+  },
+
+  collectionButton: {
+    height: 54,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  collectionButtonText: {
+    color: COLORS.white,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+
+  totalCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    marginBottom: 18,
+  },
+
+  historyGroup: {
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    marginBottom: 18,
+  },
+
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+
+  historyDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  historyDate: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: TEXT_BLACK,
+  },
+
   historyTotal: {
     fontSize: 18,
     fontWeight: '800',
     color: COLORS.primary,
   },
 
-  badgeSummaryRow: {
+  summaryStatusRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  methodSummaryBadge: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 10,
-  },
-  settledBadge: {
-    backgroundColor: COLORS.greenSoft,
-  },
-  pendingBadge: {
-    backgroundColor: COLORS.orangeSoft,
-  },
-  badgeInnerRow: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-  },
-  methodSummaryText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  methodSummarySubText: {
-    fontSize: 11,
-    marginTop: 2,
+    gap: 10,
+    marginBottom: 16,
   },
 
-  transactionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  transactionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  historyStatusCard: {
     flex: 1,
+    backgroundColor: '#EEF8F0',
+    borderRadius: 18,
+    padding: 14,
   },
-  transactionIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  transactionName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  transactionMeta: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  transactionRight: {
-    alignItems: 'flex-end',
-  },
-  transactionAmount: {
+
+  historyStatusTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: COLORS.textPrimary,
+    color: COLORS.green,
+    marginBottom: 6,
   },
+
+  historyStatusText: {
+    fontSize: 13,
+    color: COLORS.green,
+    fontWeight: '600',
+  },
+
+  historyTransaction: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 18,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+
+  customerName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: TEXT_BLACK,
+    marginBottom: 4,
+  },
+
+  customerMeta: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+
+  transactionAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: TEXT_BLACK,
+    marginBottom: 6,
+  },
+
+  paidPill: {
+    backgroundColor: '#EAFBF0',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+
   paidText: {
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.green,
-    marginTop: 4,
-  },
-
-  paginationWrap: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    padding: 10,
-    marginTop: 4,
-  },
-  pageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  pageButtonDisabled: {
-    opacity: 0.4,
-  },
-  pageButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  pageIndicator: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-
-  centerBox: {
-    paddingVertical: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoText: {
-    marginTop: 12,
-    color: COLORS.textSecondary,
-    fontSize: 14,
-  },
-  errorText: {
-    color: '#dc2626',
-    fontSize: 14,
   },
 });

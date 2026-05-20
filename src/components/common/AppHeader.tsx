@@ -1,5 +1,4 @@
-import { Feather, Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../../constants/colors';
 
@@ -12,8 +11,8 @@ export default function AppHeader() {
       </View>
 
       <View style={styles.iconRow}>
-        <Feather name="search" size={20} color={COLORS.white} />
-        <Feather name="maximize" size={20} color={COLORS.white} />
+        {/* <Feather name="search" size={20} color={COLORS.white} /> */}
+        {/* <Feather name="maximize" size={20} color={COLORS.white} /> */}
         <Ionicons name="notifications-outline" size={20} color={COLORS.white} />
       </View>
     </View>

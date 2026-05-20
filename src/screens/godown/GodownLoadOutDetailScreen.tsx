@@ -16,7 +16,7 @@ import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import { COLORS } from '../../constants/colors';
 import {
-  approveStockOutLoad,
+  cancelStockOutLoad,
   getStockOutLoadDetail,
 } from '../../services/godownService';
 
@@ -25,7 +25,7 @@ export default function GodownLoadOutDetailScreen() {
 
   const [loadData, setLoadData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [approving, setApproving] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const fetchLoadDetail = async () => {
     try {
@@ -43,18 +43,20 @@ export default function GodownLoadOutDetailScreen() {
     fetchLoadDetail();
   }, [id]);
 
-  const handleApprove = async () => {
+  const handleCancel = async () => {
     try {
-      setApproving(true);
-      await approveStockOutLoad(id);
-      DeviceEventEmitter.emit('STOCK_OUT_APPROVED', Number(id));
+      setCancelling(true);
+
+      await cancelStockOutLoad(id);
+
+      DeviceEventEmitter.emit('STOCK_OUT_CANCELLED', Number(id));
       DeviceEventEmitter.emit('NEW_STOCK_OUT');
-      DeviceEventEmitter.emit('NEW_DEFECTIVE');
+
       router.back();
-    } catch (error) {
-      console.log('Approve stock out error:', error);
+    } catch (error: any) {
+      console.log('Cancel stock out error:', error?.response?.data || error);
     } finally {
-      setApproving(false);
+      setCancelling(false);
     }
   };
 
@@ -82,7 +84,8 @@ export default function GodownLoadOutDetailScreen() {
 
   const emptyTotal = Number(loadData.empty_qty || 0);
   const defectiveTotal = Number(loadData.defective_qty || 0);
-  const approveTotal = Number(loadData.qty || emptyTotal + defectiveTotal);
+  const totalQty = Number(loadData.qty || emptyTotal + defectiveTotal);
+  const isCancelled = loadData.status === 'CANCELLED';
 
   return (
     <ScreenContainer>
@@ -100,11 +103,11 @@ export default function GodownLoadOutDetailScreen() {
 
           <View style={styles.titleBox}>
             <Text style={styles.title}>{loadData.load}</Text>
-            <Text style={styles.date}>23 Apr 2025</Text>
+            <Text style={styles.date}>{loadData.date || '23 Apr 2025'}</Text>
           </View>
 
           <View style={styles.totalBox}>
-            <Text style={styles.totalValue}>{approveTotal}</Text>
+            <Text style={styles.totalValue}>{totalQty}</Text>
             <Text style={styles.totalLabel}>CYLINDERS</Text>
           </View>
         </View>
@@ -112,7 +115,7 @@ export default function GodownLoadOutDetailScreen() {
         <View style={styles.infoCard}>
           <InfoRow icon="car-outline" label="VEHICLE" value={loadData.vehicle} />
           <InfoRow icon="person-outline" label="DRIVER" value={loadData.driver} />
-          <InfoRow icon="cube-outline" label="DEPOT" value={loadData.depot} />
+          <InfoRow icon="cube-outline" label="DEPOT" value={loadData.depot || 'HP Gas Depot - Sector 12'} />
         </View>
 
         <View style={styles.sectionHeader}>
@@ -152,9 +155,7 @@ export default function GodownLoadOutDetailScreen() {
                 <Text style={styles.defectiveTopTitle}>DEFECTIVE ITEMS</Text>
               </View>
 
-              <Text style={styles.defectiveTopTotal}>
-                {defectiveTotal} TOTAL
-              </Text>
+              <Text style={styles.defectiveTopTotal}>{defectiveTotal} TOTAL</Text>
             </View>
 
             <View style={styles.defectiveTableCard}>
@@ -174,9 +175,7 @@ export default function GodownLoadOutDetailScreen() {
 
               <View style={styles.defectiveTotalRow}>
                 <Text style={styles.defectiveTotalText}>TOTAL DEFECTIVES</Text>
-                <Text style={styles.defectiveTotalValue}>
-                  {defectiveTotal}
-                </Text>
+                <Text style={styles.defectiveTotalValue}>{defectiveTotal}</Text>
               </View>
             </View>
           </>
@@ -187,11 +186,7 @@ export default function GodownLoadOutDetailScreen() {
         <View style={styles.invoiceCard}>
           <View style={styles.invoiceRow}>
             <View style={styles.invoiceLeft}>
-              <Ionicons
-                name="document-text-outline"
-                size={16}
-                color={COLORS.textSecondary}
-              />
+              <Ionicons name="document-text-outline" size={16} color={COLORS.textSecondary} />
               <Text style={styles.invoiceLabel}>Invoice No.</Text>
             </View>
 
@@ -200,15 +195,11 @@ export default function GodownLoadOutDetailScreen() {
 
           <View style={styles.invoiceRow}>
             <View style={styles.invoiceLeft}>
-              <Ionicons
-                name="calendar-outline"
-                size={16}
-                color={COLORS.textSecondary}
-              />
+              <Ionicons name="calendar-outline" size={16} color={COLORS.textSecondary} />
               <Text style={styles.invoiceLabel}>Invoice Date</Text>
             </View>
 
-            <Text style={styles.invoiceValue}>23 Apr 2025</Text>
+            <Text style={styles.invoiceValue}>{loadData.date || '23 Apr 2025'}</Text>
           </View>
         </View>
 
@@ -232,20 +223,14 @@ export default function GodownLoadOutDetailScreen() {
       <View style={styles.bottomAction}>
         <TouchableOpacity
           style={[
-            styles.approveButton,
-            loadData.status === 'APPROVED' && styles.approvedButton,
+            styles.cancelButton,
+            isCancelled && styles.cancelledButtonDisabled,
           ]}
-          onPress={handleApprove}
-          disabled={approving || loadData.status === 'APPROVED'}
+          onPress={handleCancel}
+          disabled={cancelling || isCancelled}
         >
-          <Ionicons name="checkmark" size={18} color={COLORS.white} />
-
-          <Text style={styles.approveText}>
-            {loadData.status === 'APPROVED'
-              ? 'Approved'
-              : approving
-              ? 'Approving...'
-              : `Approve All Stock (${approveTotal})`}
+          <Text style={styles.cancelButtonText}>
+            {isCancelled ? 'Cancelled' : cancelling ? 'Cancelling...' : 'Cancel'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -288,56 +273,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   scroll: {
     flex: 1,
   },
-
   content: {
     padding: 16,
     paddingBottom: 170,
   },
-
   pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 18,
   },
-
   titleBox: {
     flex: 1,
     marginLeft: 18,
   },
-
   title: {
     fontSize: 20,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
-
   date: {
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
-
   totalBox: {
     alignItems: 'flex-end',
   },
-
   totalValue: {
     fontSize: 25,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
-
   totalLabel: {
     fontSize: 9,
     fontWeight: '900',
     color: COLORS.textSecondary,
     letterSpacing: 0.8,
   },
-
   infoCard: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -346,13 +321,11 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 18,
   },
-
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 13,
   },
-
   infoIcon: {
     width: 36,
     height: 36,
@@ -362,34 +335,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-
   infoLabel: {
     fontSize: 10,
     fontWeight: '900',
     color: COLORS.textSecondary,
     letterSpacing: 0.6,
   },
-
   infoValue: {
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
     marginTop: 1,
   },
-
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   sectionTitle: {
     fontSize: 12,
     fontWeight: '900',
     color: COLORS.textSecondary,
     letterSpacing: 0.8,
   },
-
   sectionTitleSmall: {
     fontSize: 12,
     fontWeight: '900',
@@ -398,7 +366,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 18,
   },
-
   editPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -408,13 +375,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-
   editText: {
     fontSize: 12,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
-
   tableCard: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -423,7 +388,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 8,
   },
-
   tableHead: {
     backgroundColor: '#F8FAFC',
     flexDirection: 'row',
@@ -433,13 +397,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-
   tableHeadText: {
     fontSize: 10,
     fontWeight: '900',
     color: COLORS.textSecondary,
   },
-
   stockRow: {
     minHeight: 48,
     paddingHorizontal: 14,
@@ -449,21 +411,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   stockLabel: {
     fontSize: 14,
     fontWeight: '800',
     color: COLORS.textPrimary,
     flex: 1,
   },
-
   stockValue: {
     fontSize: 16,
     fontWeight: '900',
     color: COLORS.textPrimary,
     marginLeft: 12,
   },
-
   totalRow: {
     minHeight: 52,
     backgroundColor: '#F8FAFC',
@@ -472,19 +431,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   totalRowText: {
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
-
   totalRowValue: {
     fontSize: 18,
     fontWeight: '900',
     color: COLORS.primary,
   },
-
   defectiveTopHeader: {
     marginTop: 18,
     marginBottom: 8,
@@ -492,26 +448,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   defectiveTitleLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-
   defectiveTopTitle: {
     fontSize: 12,
     fontWeight: '900',
     color: COLORS.textSecondary,
     letterSpacing: 0.8,
   },
-
   defectiveTopTotal: {
     fontSize: 11,
     fontWeight: '900',
     color: '#EF4444',
   },
-
   defectiveTableCard: {
     backgroundColor: '#FFF7F7',
     borderWidth: 1,
@@ -519,7 +471,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
-
   defectiveTableHead: {
     backgroundColor: '#FFF7F7',
     flexDirection: 'row',
@@ -529,27 +480,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#FECACA',
   },
-
   defectiveHeadText: {
     fontSize: 10,
     fontWeight: '900',
     color: '#EF4444',
     letterSpacing: 0.7,
   },
-
   defectiveStockRow: {
     backgroundColor: '#FFF7F7',
     borderBottomColor: '#FECACA',
   },
-
   defectiveStockLabel: {
     color: COLORS.textPrimary,
   },
-
   defectiveStockValue: {
     color: '#EF4444',
   },
-
   defectiveTotalRow: {
     minHeight: 52,
     backgroundColor: '#FFF7F7',
@@ -560,19 +506,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: '#FECACA',
   },
-
   defectiveTotalText: {
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
-
   defectiveTotalValue: {
     fontSize: 20,
     fontWeight: '900',
     color: '#EF4444',
   },
-
   invoiceCard: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -581,36 +524,30 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
   },
-
   invoiceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   invoiceLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-
   invoiceLabel: {
     fontSize: 14,
     color: COLORS.textSecondary,
   },
-
   invoiceValue: {
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
-
   photoHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   downloadPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -620,19 +557,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-
   downloadText: {
     fontSize: 11,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
-
   invoiceImage: {
     height: 190,
     borderRadius: 10,
     marginTop: 8,
   },
-
   bottomAction: {
     position: 'absolute',
     left: 0,
@@ -643,22 +577,17 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-
-  approveButton: {
+  cancelButton: {
     height: 58,
-    backgroundColor: COLORS.green,
+    backgroundColor: '#EF4444',
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
   },
-
-  approvedButton: {
-    opacity: 0.75,
+  cancelledButtonDisabled: {
+    backgroundColor: '#CBD5E1',
   },
-
-  approveText: {
+  cancelButtonText: {
     color: COLORS.white,
     fontSize: 17,
     fontWeight: '900',

@@ -118,11 +118,17 @@ export default function GodownStockScreen() {
         setActiveTab('defective');
       });
 
+      const sub5 = DeviceEventEmitter.addListener('STOCK_OUT_CANCELLED', () => {
+        fetchStockOutLoads();
+        setActiveTab('out');
+      });
+
       return () => {
         sub1.remove();
         sub2.remove();
         sub3.remove();
         sub4.remove();
+        sub5.remove();
       };
     }, [tab])
   );
@@ -139,24 +145,12 @@ export default function GodownStockScreen() {
       getDateLabel(item.date) !== 'YESTERDAY'
   );
 
-  const todayStockOut = stockOut.filter(
-    (item) => getDateLabel(item.date) === 'TODAY'
-  );
-  const yesterdayStockOut = stockOut.filter(
-    (item) => getDateLabel(item.date) === 'YESTERDAY'
-  );
-  const olderStockOut = stockOut.filter(
-    (item) =>
-      getDateLabel(item.date) !== 'TODAY' &&
-      getDateLabel(item.date) !== 'YESTERDAY'
-  );
-
   const filteredDefectives =
     defectiveFilter === 'ALL'
       ? defectives
       : defectives.filter(
-        (item) => item.type.toUpperCase() === defectiveFilter
-      );
+          (item) => item.type.toUpperCase() === defectiveFilter
+        );
 
   return (
     <ScreenContainer>
@@ -272,54 +266,23 @@ export default function GodownStockScreen() {
             </View>
           ) : (
             <>
-              <DateHeader
-                title="TODAY"
-                count={`${todayStockOut.length} loads`}
-              />
-
-              {todayStockOut.map((item) => (
-                <LoadCard
-                  key={item.id}
-                  item={item}
-                  unit="EMPTIES"
-                  onPress={() => router.push(`/load-out/${item.id}` as any)}
-                />
-              ))}
-
-              {yesterdayStockOut.length > 0 && (
-                <>
+              {groupLoadsByDate(stockOut).map((group) => (
+                <View key={`stock-out-group-${group.title}`}>
                   <DateHeader
-                    title="YESTERDAY"
-                    count={`${yesterdayStockOut.length} loads`}
+                    title={group.title}
+                    count={`${group.items.length} loads`}
                   />
 
-                  {yesterdayStockOut.map((item) => (
+                  {group.items.map((item, index) => (
                     <LoadCard
-                      key={item.id}
+                      key={`stock-out-${group.title}-${item.id}-${index}`}
                       item={item}
                       unit="EMPTIES"
                       onPress={() => router.push(`/load-out/${item.id}` as any)}
                     />
                   ))}
-                </>
-              )}
-
-              {olderStockOut.length > 0 && (
-                <>
-                  <DateHeader
-                    title="OLDER"
-                    count={`${olderStockOut.length} loads`}
-                  />
-                  {olderStockOut.map((item, index) => (
-                    <LoadCard
-                      key={`older-stock-out-${item.id}-${item.date}-${index}`}
-                      item={item}
-                      unit="EMPTIES"
-                      onPress={() => router.push(`/load-out-${item.id}` as any)}
-                    />
-                  ))}
-                </>
-              )}
+                </View>
+              ))}
             </>
           )}
         </View>
@@ -526,6 +489,7 @@ function LoadCard({
   onPress: () => void;
 }) {
   const approved = item.status === 'APPROVED';
+  const cancelled = item.status === 'CANCELLED';
 
   return (
     <TouchableOpacity
@@ -546,7 +510,11 @@ function LoadCard({
               <Text
                 style={[
                   styles.statusBadge,
-                  approved ? styles.approvedBadge : styles.pendingBadge,
+                  approved
+                    ? styles.approvedBadge
+                    : cancelled
+                    ? styles.cancelledBadge
+                    : styles.pendingBadge,
                 ]}
               >
                 {item.status}
@@ -631,6 +599,63 @@ const getDateLabel = (dateValue: string) => {
   if (inputDate === yesterdayDate) return 'YESTERDAY';
 
   return 'OLDER';
+};
+
+const formatDateHeader = (dateValue: string) => {
+  if (!dateValue) return '';
+
+  const label = getDateLabel(dateValue);
+
+  if (label === 'TODAY') return 'TODAY';
+  if (label === 'YESTERDAY') return 'YESTERDAY';
+
+  const date = new Date(dateValue);
+
+  return date
+    .toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
+    .toUpperCase();
+};
+
+const groupLoadsByDate = (loads: any[]) => {
+  const groups: Record<string, any[]> = {};
+
+  loads.forEach((item) => {
+    const rawDate = item.date || item.created_at;
+    const key = formatDateHeader(rawDate);
+
+    if (!groups[key]) {
+      groups[key] = [];
+    }
+
+    groups[key].push(item);
+  });
+
+  const orderValue = (title: string) => {
+    if (title === 'TODAY') return 0;
+    if (title === 'YESTERDAY') return 1;
+    return 2;
+  };
+
+  return Object.keys(groups)
+    .sort((a, b) => {
+      const oa = orderValue(a);
+      const ob = orderValue(b);
+
+      if (oa !== ob) return oa - ob;
+
+      const aDate = groups[a]?.[0]?.date || groups[a]?.[0]?.created_at;
+      const bDate = groups[b]?.[0]?.date || groups[b]?.[0]?.created_at;
+
+      return new Date(bDate).getTime() - new Date(aDate).getTime();
+    })
+    .map((title) => ({
+      title,
+      items: groups[title],
+    }));
 };
 
 const getDefectiveColor = (type: string) => {
@@ -806,6 +831,10 @@ const styles = StyleSheet.create({
   approvedBadge: {
     color: COLORS.green,
     backgroundColor: COLORS.greenSoft,
+  },
+  cancelledBadge: {
+    color: '#EF4444',
+    backgroundColor: '#FEE2E2',
   },
   qtyBox: {
     alignItems: 'center',

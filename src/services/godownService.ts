@@ -108,3 +108,29 @@ export const approveReturnByCondition = async (payload: {
   const res = await api.put('/godown/returns-today/approve', payload);
   return res.data;
 };
+
+export const cancelStockOutLoad = async (loadId: string | number) => {
+  const res = await api.put(`/godown/stock-out-loads/${loadId}/cancel`);
+  return res.data;
+};
+
+export const getCommercialBookings = async (params?: {
+  search?: string;
+  status?: 'ALL' | 'PENDING' | 'DONE';
+}) => {
+  const res = await api.get('/godown/commercial-bookings', {
+    params,
+  });
+
+  return res.data.data;
+};
+
+export const approveCommercialBooking = async (
+  bookingId: string | number
+) => {
+  const res = await api.put(
+    `/godown/commercial-bookings/${bookingId}/approve`
+  );
+
+  return res.data;
+};

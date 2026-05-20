@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -12,319 +14,412 @@ import {
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import { COLORS } from '../../constants/colors';
-import { getGodownDashboardData } from '../../services/godownService';
+import api from '../../services/api';
+
+type StockItem = {
+  productId: number;
+  productName: string;
+  quantity: number;
+  emptyQuantity?: number;
+  defectiveQuantity?: number;
+};
+
+type StockDetailData = {
+  type: 'domestic' | 'commercial';
+  title: string;
+  totalAvailable: number;
+  totalEmpty: number;
+  totalDefective: number;
+  items: StockItem[];
+};
 
 export default function GodownStockDetailScreen() {
-  const { type } = useLocalSearchParams<{ type: string }>();
-  const [dashboardData, setDashboardData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const params = useLocalSearchParams();
+  const type = String(params.type || 'domestic').toLowerCase();
 
-  const fetchDashboardData = async () => {
+  const [data, setData] = useState<StockDetailData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const isCommercial = type === 'commercial';
+
+  const title = useMemo(() => {
+    return isCommercial ? 'Commercial Stock' : 'Domestic Stock';
+  }, [isCommercial]);
+
+  const fetchStockDetail = async () => {
     try {
-      setLoading(true);
-      const data = await getGodownDashboardData();
-      setDashboardData(data);
-    } catch (error) {
-      console.log('Godown stock detail error:', error);
+      const response = await api.get(`/godown/stock-detail/${type}`);
+
+      if (response.data?.success) {
+        setData(response.data.data);
+      }
+    } catch (error: any) {
+      console.log(
+        'fetchStockDetail error:',
+        error?.response?.data || error.message
+      );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    fetchStockDetail();
+  }, [type]);
 
-  const getDetailData = () => {
-    if (!dashboardData) return null;
-
-    if (type === 'domestic') {
-      return {
-        title: 'Domestic Available',
-        icon: 'cube-outline',
-        color: COLORS.primary,
-        bg: COLORS.blueSoft,
-        ...dashboardData.available.domestic,
-      };
-    }
-
-    if (type === 'commercial') {
-      return {
-        title: 'Commercial Available',
-        icon: 'cube-outline',
-        color: COLORS.green,
-        bg: COLORS.greenSoft,
-        ...dashboardData.available.commercial,
-      };
-    }
-
-    if (type === 'empty-domestic') {
-      return {
-        title: 'Domestic Empty',
-        icon: 'refresh-outline',
-        color: COLORS.orange,
-        bg: COLORS.orangeSoft,
-        ...dashboardData.empty.domestic,
-      };
-    }
-
-    if (type === 'empty-commercial') {
-      return {
-        title: 'Commercial Empty',
-        icon: 'refresh-outline',
-        color: COLORS.orange,
-        bg: COLORS.orangeSoft,
-        ...dashboardData.empty.commercial,
-      };
-    }
-
-    return null;
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchStockDetail();
   };
-
-  const data = getDetailData();
 
   if (loading) {
     return (
       <ScreenContainer>
         <AppHeader />
-        <View style={styles.loaderBox}>
-          <ActivityIndicator color={COLORS.primary} />
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loaderText}>Loading stock details...</Text>
         </View>
       </ScreenContainer>
     );
   }
-
-  if (!data) {
-    return (
-      <ScreenContainer>
-        <AppHeader />
-        <View style={styles.content}>
-          <Text>No data found</Text>
-        </View>
-      </ScreenContainer>
-    );
-  }
-
-  const diff = Number(data.total || 0) - Number(data.system || 0);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
       <AppHeader />
 
-      <View style={styles.content}>
-        <View style={styles.titleRow}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={26} color={COLORS.textPrimary} />
           </TouchableOpacity>
 
-          <Text style={styles.pageTitle}>{data.title}</Text>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryTop}>
-            <View style={[styles.iconBox, { backgroundColor: data.bg }]}>
-              <Ionicons name={data.icon as any} size={26} color={data.color} />
-            </View>
-
-            <View style={styles.totalBox}>
-              <Text style={styles.totalLabel}>TOTAL STOCK</Text>
-              <Text style={styles.totalValue}>{data.total}</Text>
-            </View>
-
-            <View style={styles.diffBadge}>
-              <Ionicons name="warning-outline" size={13} color="#EF4444" />
-              <Text style={styles.diffBadgeText}>
-                {diff > 0 ? `+${diff}` : diff}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.smallCardRow}>
-            <View style={styles.smallCard}>
-              <Text style={styles.smallLabel}>PHYSICAL</Text>
-              <Text style={styles.smallValue}>{data.total}</Text>
-            </View>
-
-            <View style={styles.smallCard}>
-              <Text style={styles.smallLabel}>SYSTEM</Text>
-              <Text style={styles.smallValue}>{data.system}</Text>
-            </View>
+          <View>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.subtitle}>
+              {data?.totalAvailable || 0} cylinders available
+            </Text>
           </View>
         </View>
+
+        <View style={styles.summaryGrid}>
+          <SummaryBox
+            label="Available"
+            value={data?.totalAvailable || 0}
+            icon="cube-outline"
+            color={COLORS.primary}
+            bg={COLORS.blueSoft}
+          />
+
+          <SummaryBox
+            label="Empties"
+            value={data?.totalEmpty || 0}
+            icon="refresh-outline"
+            color={COLORS.orange}
+            bg={COLORS.orangeSoft}
+          />
+
+          <SummaryBox
+            label="Defective"
+            value={data?.totalDefective || 0}
+            icon="warning-outline"
+            color="#EF4444"
+            bg="#FEE2E2"
+          />
+        </View>
+
+        {isCommercial ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.bookingCard}
+            onPress={() => router.push('/commercial-bookings')}
+          >
+            <View style={styles.bookingLeft}>
+              <View style={styles.bookingIconBox}>
+                <Ionicons name="clipboard-outline" size={28} color={COLORS.primary} />
+              </View>
+
+              <View style={styles.bookingTextBox}>
+                <Text style={styles.bookingTitle}>Delivery Boy Bookings</Text>
+                <Text style={styles.bookingSub}>
+                  Approve commercial cylinder bookings
+                </Text>
+              </View>
+            </View>
+
+            <Ionicons
+              name="chevron-forward"
+              size={26}
+              color={COLORS.textSecondary}
+            />
+          </TouchableOpacity>
+        ) : null}
+
+        <Text style={styles.sectionTitle}>ITEM BREAKDOWN</Text>
 
         <View style={styles.breakdownCard}>
-          <Text style={styles.breakdownTitle}>Item-wise Breakdown</Text>
+          {(data?.items || []).length ? (
+            data?.items.map((item) => (
+              <View key={item.productId} style={styles.itemRow}>
+                <View style={styles.itemLeft}>
+                  <View style={styles.itemIconBox}>
+                    <Ionicons name="cube-outline" size={22} color={COLORS.primary} />
+                  </View>
 
-          <View style={styles.tableHeader}>
-            <Text style={[styles.th, { flex: 1.4, textAlign: 'left' }]}>
-              ITEM
-            </Text>
-            <Text style={styles.th}>PHYSICAL</Text>
-            <Text style={styles.th}>SYSTEM</Text>
-            <Text style={styles.th}>DIFF</Text>
-          </View>
+                  <View>
+                    <Text style={styles.itemName}>{item.productName}</Text>
+                    <Text style={styles.itemSub}>
+                      Empty: {item.emptyQuantity || 0} · Defective:{' '}
+                      {item.defectiveQuantity || 0}
+                    </Text>
+                  </View>
+                </View>
 
-          {(data.items || []).map((item: any, index: number) => (
-            <View key={index} style={styles.tableRow}>
-              <Text style={[styles.tdItem, { flex: 1.4 }]}>
-                {item.item}
-              </Text>
-
-              <Text style={[styles.td, item.diff !== 0 && styles.redText]}>
-                {item.physical}
-              </Text>
-
-              <Text style={styles.td}>{item.system}</Text>
-
-              <Text style={[styles.td, item.diff !== 0 && styles.redText]}>
-                {item.diff > 0 ? `+${item.diff}` : item.diff}
-              </Text>
+                <Text style={styles.itemQty}>{item.quantity || 0}</Text>
+              </View>
+            ))
+          ) : (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>No stock items found</Text>
             </View>
-          ))}
+          )}
         </View>
-      </View>
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
+function SummaryBox({
+  label,
+  value,
+  icon,
+  color,
+  bg,
+}: {
+  label: string;
+  value: number;
+  icon: any;
+  color: string;
+  bg: string;
+}) {
+  return (
+    <View style={styles.summaryBox}>
+      <View style={[styles.summaryIcon, { backgroundColor: bg }]}>
+        <Ionicons name={icon} size={26} color={color} />
+      </View>
+
+      <Text style={styles.summaryValue}>{value}</Text>
+      <Text style={styles.summaryLabel}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  loaderBox: {
-    height: 400,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   content: {
     padding: 16,
+    paddingBottom: 100,
   },
-  titleRow: {
+
+  loader: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  loaderText: {
+    marginTop: 10,
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 22,
+    gap: 14,
+    marginBottom: 20,
   },
-  pageTitle: {
-    fontSize: 19,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
-    marginLeft: 18,
-  },
-  summaryCard: {
+
+  backButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
     backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-  },
-  summaryTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  totalBox: {
-    marginLeft: 14,
-    flex: 1,
-  },
-  totalLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
-  },
-  totalValue: {
-    fontSize: 31,
+
+  title: {
+    fontSize: 24,
     fontWeight: '900',
     color: COLORS.textPrimary,
-    lineHeight: 35,
   },
-  diffBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEE2E2',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  diffBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#EF4444',
-    marginLeft: 3,
-  },
-  smallCardRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-  },
-  smallCard: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 12,
-  },
-  smallLabel: {
-    fontSize: 10,
-    fontWeight: '800',
+
+  subtitle: {
+    fontSize: 14,
+    fontWeight: '700',
     color: COLORS.textSecondary,
-  },
-  smallValue: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
     marginTop: 3,
   },
+
+  summaryGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+
+  summaryBox: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+
+  summaryIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+
+  summaryValue: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+
+  summaryLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+
+  bookingCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  bookingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+
+  bookingIconBox: {
+    width: 58,
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: COLORS.blueSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+
+  bookingTextBox: {
+    flex: 1,
+  },
+
+  bookingTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+
+  bookingSub: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.textSecondary,
+    marginBottom: 12,
+  },
+
   breakdownCard: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 14,
+    borderRadius: 18,
     overflow: 'hidden',
   },
-  breakdownTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+
+  itemRow: {
     padding: 16,
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  th: {
-    flex: 1,
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
-    textAlign: 'right',
-  },
-  tableRow: {
-    flexDirection: 'row',
-    paddingVertical: 15,
-    paddingHorizontal: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  tdItem: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-  },
-  td: {
+
+  itemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    textAlign: 'right',
   },
-  redText: {
-    color: '#EF4444',
+
+  itemIconBox: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: COLORS.blueSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+
+  itemName: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+
+  itemSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+
+  itemQty: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+
+  emptyBox: {
+    padding: 24,
+    alignItems: 'center',
+  },
+
+  emptyText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
   },
 });

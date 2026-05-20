@@ -46,12 +46,30 @@ export type CollectionSummaryResponse = {
     totalCollected: number;
   };
   settlements: {
-    cash: SettlementItem[];
-    upi: SettlementItem[];
+    cash: {
+      amount: number;
+      count: number;
+      transactions: SettlementItem[];
+    };
+    upi: {
+      amount: number;
+      count: number;
+      transactions: SettlementItem[];
+    };
   };
 };
 
 export type InHandReturnRequest = {
+  id: number;
+  productId: number;
+  stockAreaId: number;
+  quantity: number;
+  productName: string;
+  createdAt: string;
+  isApproved: number;
+};
+
+export type InHandDefectiveRequest = {
   id: number;
   productId: number;
   stockAreaId: number;
@@ -67,9 +85,11 @@ export type InHandSummaryResponse = {
     delivered: number;
     inHand: number;
   };
-  returnRequests: InHandReturnRequest[];
-};
 
+  returnRequests: InHandReturnRequest[];
+
+  defectiveRequests: InHandDefectiveRequest[];
+};
 export type CollectionHistoryTransaction = {
   saleId: number;
   customerName: string;

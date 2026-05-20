@@ -18,6 +18,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+
 import AppHeader from "../components/common/AppHeader";
 import ScreenContainer from "../components/common/ScreenContainer";
 import ConfirmDeliveryModal from "../components/ui/ConfirmDeliveryModal";
@@ -36,19 +37,45 @@ type FoundCustomer = {
   name: string;
   phone: string;
   address: string;
+  productType?: string;
+  quantity?: number;
 };
 
-type ProductItem = {
-  id: number;
-  name: string;
-  type: "DOMESTIC" | "COMMERCIAL";
-  price: number;
+type BatchItem = {
+  allocationSaleId: number;
+  allocationSalesItemId: number;
+  batchNo: string;
+  productId: number;
+  productName: string;
+  productType: "DOMESTIC" | "COMMERCIAL";
+  productPrice: number;
+  size?: string;
+  totalAllocated: number;
+  delivered: number;
+  returned: number;
+  defective: number;
+  pending: number;
+  allocatedAt: string;
+};
+
+const formatBatchType = (type?: string) => {
+  if (type === "DOMESTIC") return "Domestic";
+  if (type === "COMMERCIAL") return "Commercial";
+  return type || "Domestic";
+};
+
+const formatSize = (batch: BatchItem) => {
+  if (batch.size) return batch.size;
+  const match = batch.productName?.match(/\d+\.?\d*\s?kg/i);
+  return match?.[0] || "";
 };
 
 export default function DeliveriesScreen() {
   const router = useRouter();
 
-  const [dashboard, setDashboard] = useState<DriverDeliveriesResponse | null>(null);
+  const [dashboard, setDashboard] = useState<DriverDeliveriesResponse | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -56,7 +83,8 @@ export default function DeliveriesScreen() {
   const [activeTab, setActiveTab] = useState<"TODAY" | "COMMERCIAL">("TODAY");
 
   const [confirmVisible, setConfirmVisible] = useState(false);
-  const [selectedSale, setSelectedSale] = useState<DriverDeliveryItem | null>(null);
+  const [selectedSale, setSelectedSale] =
+    useState<DriverDeliveryItem | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
   const [finderVisible, setFinderVisible] = useState(false);
@@ -66,6 +94,12 @@ export default function DeliveriesScreen() {
   const [scanned, setScanned] = useState(false);
 
   const [foundCustomer, setFoundCustomer] = useState<FoundCustomer | null>(null);
+
+  const [batchModalVisible, setBatchModalVisible] = useState(false);
+  const [availableBatches, setAvailableBatches] = useState<BatchItem[]>([]);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState<BatchItem | null>(null);
+
   const [createSaleVisible, setCreateSaleVisible] = useState(false);
   const [createSaleLoading, setCreateSaleLoading] = useState(false);
 
@@ -75,17 +109,12 @@ export default function DeliveriesScreen() {
   const [emptyCylinderQty, setEmptyCylinderQty] = useState(1);
   const [otp, setOtp] = useState("");
 
-  const [productSearch, setProductSearch] = useState("");
-  const [products, setProducts] = useState<ProductItem[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [productLoading, setProductLoading] = useState(false);
-
   const [permission, requestPermission] = useCameraPermissions();
 
   const fetchDeliveries = useCallback(async () => {
     try {
       setError("");
+
       const response = await api.get(`/drivers/${DRIVER_ID}/app-deliveries`);
 
       if (response.data?.success) {
@@ -142,6 +171,7 @@ export default function DeliveriesScreen() {
       await fetchDeliveries();
     } catch (err: any) {
       console.error("Confirm delivery error:", err?.response?.data || err.message);
+      Alert.alert("Error", err?.response?.data?.message || "Failed to confirm");
     } finally {
       setConfirmLoading(false);
     }
@@ -152,10 +182,8 @@ export default function DeliveriesScreen() {
     setSaleAmount("950");
     setEmptyCylinderQty(1);
     setOtp("");
-    setProductSearch("");
-    setSelectedProduct(null);
-    setProducts([]);
-    setShowProductDropdown(false);
+    setSelectedBatch(null);
+    setAvailableBatches([]);
   };
 
   const handleOpenFinder = () => {
@@ -181,25 +209,25 @@ export default function DeliveriesScreen() {
     }
   };
 
-  const fetchDomesticProducts = async (search = "") => {
+  const fetchAvailableBatches = async () => {
     try {
-      setProductLoading(true);
+      setBatchLoading(true);
 
-      const response = await api.get(
-        `/drivers/products/search?type=DOMESTIC&search=${encodeURIComponent(search)}`
-      );
+      const response = await api.get(`/drivers/${DRIVER_ID}/available-batches`);
 
       if (response.data?.success) {
-        setProducts(response.data.data || []);
-        setShowProductDropdown(true);
+        setAvailableBatches(response.data.data || []);
       } else {
-        setProducts([]);
+        setAvailableBatches([]);
       }
     } catch (err: any) {
-      console.error("fetchDomesticProducts error:", err?.response?.data || err.message);
-      setProducts([]);
+      console.error(
+        "fetchAvailableBatches error:",
+        err?.response?.data || err.message
+      );
+      setAvailableBatches([]);
     } finally {
-      setProductLoading(false);
+      setBatchLoading(false);
     }
   };
 
@@ -226,11 +254,15 @@ export default function DeliveriesScreen() {
           name: customer.name || "",
           phone: customer.phone || "",
           address: customer.address || "",
+          productType: customer.productType || customer.type || "Domestic",
+          quantity: Number(customer.quantity || 1),
         });
 
         handleCloseFinder();
         resetCreateSaleForm();
-        setCreateSaleVisible(true);
+
+        await fetchAvailableBatches();
+        setBatchModalVisible(true);
       } else {
         Alert.alert("Not found", response.data?.message || "Customer not found");
       }
@@ -254,11 +286,18 @@ export default function DeliveriesScreen() {
     }, 1500);
   };
 
+  const handleBatchSelect = (batch: BatchItem) => {
+    setSelectedBatch(batch);
+    setSaleAmount(String(batch.productPrice || 0));
+    setBatchModalVisible(false);
+    setCreateSaleVisible(true);
+  };
+
   const handleCreateSaleFromCustomer = async () => {
     if (!foundCustomer) return;
 
-    if (!selectedProduct) {
-      Alert.alert("Required", "Please select product");
+    if (!selectedBatch) {
+      Alert.alert("Required", "Please select batch");
       return;
     }
 
@@ -272,37 +311,40 @@ export default function DeliveriesScreen() {
 
       const orderedQty = 1;
 
+      if (selectedBatch.pending < orderedQty) {
+        Alert.alert("Error", "Selected batch does not have enough cylinders");
+        return;
+      }
+
       const emptyCylinderStatus =
         emptyCylinderQty === 0
-          ? 'PENDING'
+          ? "PENDING"
           : emptyCylinderQty === orderedQty
-            ? 'DELIVERED'
-            : 'PARTIAL_PENDING';
+          ? "DELIVERED"
+          : "PARTIAL_PENDING";
 
       await api.post("/drivers/sales", {
         driver_id: DRIVER_ID,
         customer_name: foundCustomer.name,
         phone: foundCustomer.phone,
         address: foundCustomer.address,
-        cylinder_type: "DOMESTIC",
 
-        product_id: selectedProduct.id,
-
+        cylinder_type: selectedBatch.productType,
+        product_id: selectedBatch.productId,
         quantity: orderedQty,
 
         payment_method: salePaymentMethod,
-
         amount: Number(saleAmount),
 
         empty_cylinder_collected: emptyCylinderQty > 0,
-
         delivered_qty: orderedQty,
-
         empty_cylinder_qty: Number(emptyCylinderQty || 0),
-
         empty_cylinder_status: emptyCylinderStatus,
-
         defective_qty: 0,
+
+        allocation_sale_id: selectedBatch.allocationSaleId,
+        allocation_sales_item_id: selectedBatch.allocationSalesItemId,
+        batch_no: selectedBatch.batchNo,
       });
 
       setCreateSaleVisible(false);
@@ -312,7 +354,10 @@ export default function DeliveriesScreen() {
 
       Alert.alert("Success", "Sale created successfully");
     } catch (err: any) {
-      console.error("handleCreateSaleFromCustomer error:", err?.response?.data || err.message);
+      console.error(
+        "handleCreateSaleFromCustomer error:",
+        err?.response?.data || err.message
+      );
       Alert.alert("Error", err?.response?.data?.message || "Failed to create sale");
     } finally {
       setCreateSaleLoading(false);
@@ -343,6 +388,7 @@ export default function DeliveriesScreen() {
         value: `₹${dashboard?.stats?.collection ?? 0}`,
         icon: "wallet-outline",
         tone: "orange" as const,
+        onPress: () => router.push("/collection"),
       },
       {
         id: 4,
@@ -398,7 +444,10 @@ export default function DeliveriesScreen() {
           ) : error ? (
             <View style={styles.centerBox}>
               <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={fetchDeliveries}>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={fetchDeliveries}
+              >
                 <Text style={styles.retryButtonText}>Retry</Text>
               </TouchableOpacity>
             </View>
@@ -495,12 +544,12 @@ export default function DeliveriesScreen() {
           sale={
             selectedSale
               ? {
-                customerName: selectedSale.customerName,
-                address: selectedSale.address,
-                product: selectedSale.product,
-                quantity: selectedSale.quantity,
-                totalAmount: selectedSale.totalAmount,
-              }
+                  customerName: selectedSale.customerName,
+                  address: selectedSale.address,
+                  product: selectedSale.product,
+                  quantity: selectedSale.quantity,
+                  totalAmount: selectedSale.totalAmount,
+                }
               : null
           }
         />
@@ -514,368 +563,569 @@ export default function DeliveriesScreen() {
         <Ionicons name="scan-outline" size={34} color={COLORS.white} />
       </TouchableOpacity>
 
-      <Modal
+      <FindCustomerModal
         visible={finderVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCloseFinder}
-      >
-        <TouchableWithoutFeedback onPress={handleCloseFinder}>
-          <View style={styles.finderOverlay}>
-            <TouchableWithoutFeedback onPress={() => { }}>
-              <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                style={styles.keyboardView}
-              >
-                <TouchableWithoutFeedback onPress={() => { }}>
-                  <View style={styles.finderSheet}>
-                    <ScrollView
-                      keyboardShouldPersistTaps="handled"
-                      showsVerticalScrollIndicator={false}
-                      contentContainerStyle={styles.finderScrollContent}
-                    >
+        finderMode={finderMode}
+        consumerNumber={consumerNumber}
+        findingCustomer={findingCustomer}
+        permission={permission}
+        scanned={scanned}
+        onClose={handleCloseFinder}
+        onModeChange={handleSwitchFinderMode}
+        onConsumerNumberChange={setConsumerNumber}
+        onFind={() => handleFindCustomer()}
+        onBarcodeScanned={handleBarcodeScanned}
+        requestPermission={requestPermission}
+      />
 
-                      <View >
-                        <View style={styles.finderHandle} />
+      <BatchSelectionModal
+        visible={batchModalVisible}
+        loading={batchLoading}
+        customer={foundCustomer}
+        batches={availableBatches}
+        onBack={() => {
+          setBatchModalVisible(false);
+          setFinderVisible(true);
+        }}
+        onClose={() => setBatchModalVisible(false)}
+        onSelect={handleBatchSelect}
+        onSkip={() => {
+          setSelectedBatch(null);
+          setBatchModalVisible(false);
+          Alert.alert("Required", "Please select a batch to continue");
+        }}
+      />
 
-                        <View style={styles.finderHeader}>
-                          <Text style={styles.finderTitle}>Find Customer</Text>
-
-                          <TouchableOpacity onPress={handleCloseFinder}>
-                            <Ionicons name="close-outline" size={30} color={COLORS.textSecondary} />
-                          </TouchableOpacity>
-                        </View>
-
-                        <View style={styles.finderTabs}>
-                          <TouchableOpacity
-                            style={[
-                              styles.finderTab,
-                              finderMode === "QR" && styles.finderTabActive,
-                            ]}
-                            onPress={() => handleSwitchFinderMode("QR")}
-                          >
-                            <Ionicons
-                              name="qr-code-outline"
-                              size={22}
-                              color={finderMode === "QR" ? COLORS.white : COLORS.textPrimary}
-                            />
-                            <Text
-                              style={[
-                                styles.finderTabText,
-                                finderMode === "QR" && styles.finderTabTextActive,
-                              ]}
-                            >
-                              Scan QR
-                            </Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={[
-                              styles.finderTab,
-                              finderMode === "NUMBER" && styles.finderTabActive,
-                            ]}
-                            onPress={() => handleSwitchFinderMode("NUMBER")}
-                          >
-                            <Ionicons
-                              name="search-outline"
-                              size={24}
-                              color={finderMode === "NUMBER" ? COLORS.white : COLORS.textPrimary}
-                            />
-                            <Text
-                              style={[
-                                styles.finderTabText,
-                                finderMode === "NUMBER" && styles.finderTabTextActive,
-                              ]}
-                            >
-                              Enter Number
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-
-                        {finderMode === "NUMBER" ? (
-                          <View>
-                            <Text style={styles.inputLabel}>Consumer Number / Phone</Text>
-
-                            <TextInput
-                              style={styles.consumerInput}
-                              placeholder="e.g. 9876543210"
-                              placeholderTextColor={COLORS.textSecondary}
-                              keyboardType="phone-pad"
-                              value={consumerNumber}
-                              onChangeText={setConsumerNumber}
-                            />
-
-                            <TouchableOpacity
-                              style={[
-                                styles.findCustomerButton,
-                                (!consumerNumber.trim() || findingCustomer) &&
-                                styles.findCustomerButtonDisabled,
-                              ]}
-                              disabled={!consumerNumber.trim() || findingCustomer}
-                              onPress={() => handleFindCustomer()}
-                            >
-                              {findingCustomer ? (
-                                <ActivityIndicator color={COLORS.white} />
-                              ) : (
-                                <>
-                                  <Ionicons name="search-outline" size={24} color={COLORS.white} />
-                                  <Text style={styles.findCustomerButtonText}>Find Customer</Text>
-                                </>
-                              )}
-                            </TouchableOpacity>
-                          </View>
-                        ) : (
-                          <View style={styles.cameraBlock}>
-                            {!permission ? (
-                              <View style={styles.permissionBox}>
-                                <ActivityIndicator color={COLORS.primary} />
-                                <Text style={styles.permissionText}>Checking camera permission...</Text>
-                              </View>
-                            ) : !permission.granted ? (
-                              <View style={styles.permissionBox}>
-                                <Text style={styles.permissionTitle}>Camera permission needed</Text>
-                                <Text style={styles.permissionText}>
-                                  Please allow camera access to scan customer QR code.
-                                </Text>
-                                <TouchableOpacity
-                                  style={styles.permissionButton}
-                                  onPress={requestPermission}
-                                >
-                                  <Text style={styles.permissionButtonText}>Allow Camera</Text>
-                                </TouchableOpacity>
-                              </View>
-                            ) : (
-                              <>
-                                <View style={styles.cameraPreview}>
-                                  <CameraView
-                                    style={StyleSheet.absoluteFillObject}
-                                    facing="back"
-                                    barcodeScannerSettings={{
-                                      barcodeTypes: ["qr"],
-                                    }}
-                                    onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-                                  />
-
-                                  <View style={styles.scanFrame}>
-                                    <View style={[styles.corner, styles.cornerTopLeft]} />
-                                    <View style={[styles.corner, styles.cornerTopRight]} />
-                                    <View style={[styles.corner, styles.cornerBottomLeft]} />
-                                    <View style={[styles.corner, styles.cornerBottomRight]} />
-                                  </View>
-                                </View>
-
-                                <Text style={styles.scanHelp}>
-                                  Point camera at the customer's QR code.
-                                </Text>
-                              </>
-                            )}
-                          </View>
-                        )}
-                      </View>
-
-                    </ScrollView>
-                  </View>
-                </TouchableWithoutFeedback>
-              </KeyboardAvoidingView>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      <Modal
+      <ConfirmNewSaleModal
         visible={createSaleVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCreateSaleVisible(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setCreateSaleVisible(false)}>
-          <View style={styles.finderOverlay}>
-            <TouchableWithoutFeedback onPress={() => { }}>
-              <View style={styles.confirmSaleSheet}>
-                <ScrollView
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={styles.confirmSaleScrollContent}
-                >
-                  <View style={styles.finderHandle} />
-
-                  <View style={styles.finderHeader}>
-                    <Text style={styles.finderTitle}>Confirm Delivery</Text>
-
-                    <TouchableOpacity onPress={() => setCreateSaleVisible(false)}>
-                      <Ionicons name="close-outline" size={34} color={COLORS.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.customerPreviewBox}>
-                    <Text style={styles.customerPreviewName}>
-                      {foundCustomer?.name || ""}
-                    </Text>
-
-                    <View style={styles.customerAddressRow}>
-                      <Ionicons
-                        name="location-outline"
-                        size={18}
-                        color={COLORS.textSecondary}
-                      />
-                      <Text style={styles.customerPreviewAddress}>
-                        {foundCustomer?.address || ""}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.customerPreviewMeta}>
-                      {foundCustomer?.phone || ""}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.inputLabel}>Product</Text>
-
-                  <View style={styles.productSearchBox}>
-                    <Ionicons name="search-outline" size={20} color={COLORS.textSecondary} />
-                    <TextInput
-                      style={styles.productSearchInput}
-                      placeholder="Search domestic product"
-                      placeholderTextColor={COLORS.textSecondary}
-                      value={productSearch}
-                      onFocus={() => fetchDomesticProducts(productSearch)}
-                      onChangeText={(text) => {
-                        setProductSearch(text);
-                        setSelectedProduct(null);
-                        fetchDomesticProducts(text);
-                      }}
-                    />
-                    {productLoading ? (
-                      <ActivityIndicator size="small" color={COLORS.primary} />
-                    ) : null}
-                  </View>
-
-                  {showProductDropdown && products.length > 0 ? (
-                    <View style={styles.productDropdown}>
-                      {products.map((item) => (
-                        <TouchableOpacity
-                          key={item.id}
-                          style={styles.productDropdownItem}
-                          onPress={() => {
-                            setSelectedProduct(item);
-                            setProductSearch(item.name);
-                            setSaleAmount(String(item.price || 0));
-                            setShowProductDropdown(false);
-                          }}
-                        >
-                          <Text style={styles.productDropdownName}>{item.name}</Text>
-                          <Text style={styles.productDropdownPrice}>₹{item.price}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ) : null}
-
-                  <Text style={styles.inputLabel}>Payment Method</Text>
-
-                  <View style={styles.paymentRow}>
-                    {(["CASH", "UPI"] as const).map((method) => (
-                      <TouchableOpacity
-                        key={method}
-                        style={[
-                          styles.paymentButton,
-                          salePaymentMethod === method && styles.paymentButtonActive,
-                        ]}
-                        onPress={() => setSalePaymentMethod(method)}
-                      >
-                        <Text
-                          style={[
-                            styles.paymentButtonText,
-                            salePaymentMethod === method && styles.paymentButtonTextActive,
-                          ]}
-                        >
-                          {method === "CASH"
-                            ? "Cash"
-                            : method === "UPI"
-                              ? "UPI"
-                              : method === "ONLINE"
-                                ? "Online"
-                                : "Credit"}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <Text style={styles.inputLabel}>Amount (₹)</Text>
-
-                  <TextInput
-                    style={styles.amountInput}
-                    keyboardType="numeric"
-                    value={saleAmount}
-                    onChangeText={setSaleAmount}
-                  />
-
-                  <Text style={styles.inputLabel}>Empty Cylinders Collected</Text>
-
-                  <View style={styles.emptyCounterRow}>
-                    <TouchableOpacity
-                      style={styles.emptyCounterButton}
-                      onPress={() => setEmptyCylinderQty((prev) => Math.max(0, prev - 1))}
-                    >
-                      <Text style={styles.emptyCounterText}>-</Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.emptyCounterValueBox}>
-                      <Text style={styles.emptyCounterValue}>{emptyCylinderQty}</Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.emptyCounterButton}
-                      onPress={() => setEmptyCylinderQty((prev) => prev + 1)}
-                    >
-                      <Text style={styles.emptyCounterText}>+</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <Text style={styles.inputLabel}>Customer OTP (4-digit)</Text>
-                  <Text style={styles.otpHelp}>
-                    Ask the customer for the OTP sent to {foundCustomer?.phone || ""}.
-                  </Text>
-
-                  <TextInput
-                    style={styles.otpInput}
-                    keyboardType="number-pad"
-                    maxLength={4}
-                    value={otp}
-                    onChangeText={setOtp}
-                  />
-
-                  <TouchableOpacity
-                    style={[
-                      styles.verifyButton,
-                      (otp.length !== 4 || !selectedProduct || createSaleLoading) &&
-                      styles.verifyButtonDisabled,
-                    ]}
-                    disabled={otp.length !== 4 || !selectedProduct || createSaleLoading}
-                    onPress={handleCreateSaleFromCustomer}
-                  >
-                    {createSaleLoading ? (
-                      <ActivityIndicator color={COLORS.white} />
-                    ) : (
-                      <>
-                        <Ionicons name="checkmark-circle-outline" size={26} color={COLORS.white} />
-                        <Text style={styles.verifyButtonText}>Verify OTP & Save</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </ScrollView>
-              </View>
-
-
-
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+        customer={foundCustomer}
+        batch={selectedBatch}
+        paymentMethod={salePaymentMethod}
+        amount={saleAmount}
+        emptyCylinderQty={emptyCylinderQty}
+        otp={otp}
+        loading={createSaleLoading}
+        onClose={() => setCreateSaleVisible(false)}
+        onPaymentMethodChange={setSalePaymentMethod}
+        onAmountChange={setSaleAmount}
+        onEmptyMinus={() => setEmptyCylinderQty((prev) => Math.max(0, prev - 1))}
+        onEmptyPlus={() => setEmptyCylinderQty((prev) => prev + 1)}
+        onOtpChange={setOtp}
+        onSubmit={handleCreateSaleFromCustomer}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function FindCustomerModal({
+  visible,
+  finderMode,
+  consumerNumber,
+  findingCustomer,
+  permission,
+  scanned,
+  onClose,
+  onModeChange,
+  onConsumerNumberChange,
+  onFind,
+  onBarcodeScanned,
+  requestPermission,
+}: {
+  visible: boolean;
+  finderMode: FinderMode;
+  consumerNumber: string;
+  findingCustomer: boolean;
+  permission: any;
+  scanned: boolean;
+  onClose: () => void;
+  onModeChange: (mode: FinderMode) => void;
+  onConsumerNumberChange: (value: string) => void;
+  onFind: () => void;
+  onBarcodeScanned: ({ data }: { data: string }) => void;
+  requestPermission: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.finderOverlay}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={styles.keyboardView}
+            >
+              <View style={styles.finderSheet}>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.finderScrollContent}
+                >
+                  <View style={styles.finderHandle} />
 
+                  <View style={styles.finderHeader}>
+                    <Text style={styles.finderTitle}>Find Customer</Text>
+
+                    <TouchableOpacity onPress={onClose}>
+                      <Ionicons
+                        name="close-outline"
+                        size={34}
+                        color={COLORS.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.finderTabs}>
+                    <TouchableOpacity
+                      style={[
+                        styles.finderTab,
+                        finderMode === "QR" && styles.finderTabActive,
+                      ]}
+                      onPress={() => onModeChange("QR")}
+                    >
+                      <Ionicons
+                        name="qr-code-outline"
+                        size={22}
+                        color={finderMode === "QR" ? COLORS.white : COLORS.textPrimary}
+                      />
+                      <Text
+                        style={[
+                          styles.finderTabText,
+                          finderMode === "QR" && styles.finderTabTextActive,
+                        ]}
+                      >
+                        Scan QR
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.finderTab,
+                        finderMode === "NUMBER" && styles.finderTabActive,
+                      ]}
+                      onPress={() => onModeChange("NUMBER")}
+                    >
+                      <Ionicons
+                        name="search-outline"
+                        size={24}
+                        color={
+                          finderMode === "NUMBER"
+                            ? COLORS.white
+                            : COLORS.textPrimary
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.finderTabText,
+                          finderMode === "NUMBER" && styles.finderTabTextActive,
+                        ]}
+                      >
+                        Enter Number
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {finderMode === "NUMBER" ? (
+                    <View>
+                      <Text style={styles.inputLabel}>Consumer Number / Phone</Text>
+
+                      <TextInput
+                        style={styles.consumerInput}
+                        placeholder="e.g. 9876543210"
+                        placeholderTextColor={COLORS.textSecondary}
+                        keyboardType="phone-pad"
+                        value={consumerNumber}
+                        onChangeText={onConsumerNumberChange}
+                      />
+
+                      <TouchableOpacity
+                        style={[
+                          styles.findCustomerButton,
+                          (!consumerNumber.trim() || findingCustomer) &&
+                            styles.findCustomerButtonDisabled,
+                        ]}
+                        disabled={!consumerNumber.trim() || findingCustomer}
+                        onPress={onFind}
+                      >
+                        {findingCustomer ? (
+                          <ActivityIndicator color={COLORS.white} />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name="search-outline"
+                              size={24}
+                              color={COLORS.white}
+                            />
+                            <Text style={styles.findCustomerButtonText}>
+                              Find Customer
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.cameraBlock}>
+                      {!permission ? (
+                        <View style={styles.permissionBox}>
+                          <ActivityIndicator color={COLORS.primary} />
+                          <Text style={styles.permissionText}>
+                            Checking camera permission...
+                          </Text>
+                        </View>
+                      ) : !permission.granted ? (
+                        <View style={styles.permissionBox}>
+                          <Text style={styles.permissionTitle}>
+                            Camera permission needed
+                          </Text>
+                          <Text style={styles.permissionText}>
+                            Please allow camera access to scan customer QR code.
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.permissionButton}
+                            onPress={requestPermission}
+                          >
+                            <Text style={styles.permissionButtonText}>
+                              Allow Camera
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <>
+                          <View style={styles.cameraPreview}>
+                            <CameraView
+                              style={StyleSheet.absoluteFillObject}
+                              facing="back"
+                              barcodeScannerSettings={{
+                                barcodeTypes: ["qr"],
+                              }}
+                              onBarcodeScanned={
+                                scanned ? undefined : onBarcodeScanned
+                              }
+                            />
+
+                            <View style={styles.scanFrame}>
+                              <View style={[styles.corner, styles.cornerTopLeft]} />
+                              <View style={[styles.corner, styles.cornerTopRight]} />
+                              <View
+                                style={[styles.corner, styles.cornerBottomLeft]}
+                              />
+                              <View
+                                style={[styles.corner, styles.cornerBottomRight]}
+                              />
+                            </View>
+                          </View>
+
+                          <Text style={styles.scanHelp}>
+                            Point camera at the customer's QR code.
+                          </Text>
+                        </>
+                      )}
+                    </View>
+                  )}
+                </ScrollView>
+              </View>
+            </KeyboardAvoidingView>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+function BatchSelectionModal({
+  visible,
+  loading,
+  customer,
+  batches,
+  onBack,
+  onClose,
+  onSelect,
+  onSkip,
+}: {
+  visible: boolean;
+  loading: boolean;
+  customer: FoundCustomer | null;
+  batches: BatchItem[];
+  onBack: () => void;
+  onClose: () => void;
+  onSelect: (batch: BatchItem) => void;
+  onSkip: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.finderOverlay}>
+        <View style={styles.batchSheet}>
+          <View style={styles.finderHandle} />
+
+          <View style={styles.batchHeader}>
+            <TouchableOpacity onPress={onBack}>
+              <Ionicons name="arrow-back" size={28} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+
+            <Text style={styles.batchTitle}>Select Cylinder Batch</Text>
+
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close-outline" size={34} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.batchCustomerBox}>
+            <Text style={styles.batchCustomerName}>{customer?.name || ""}</Text>
+            <Text style={styles.batchCustomerMeta}>
+              {customer?.phone || ""} · {customer?.productType || "Domestic"} · Qty{" "}
+              {customer?.quantity || 1}
+            </Text>
+          </View>
+
+          <Text style={styles.batchSubtitle}>
+            Choose a batch to allocate for this delivery.
+          </Text>
+
+          {loading ? (
+            <View style={styles.centerBox}>
+              <ActivityIndicator color={COLORS.primary} />
+              <Text style={styles.infoText}>Loading batches...</Text>
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {batches.map((batch) => (
+                <TouchableOpacity
+                  key={`${batch.batchNo}-${batch.allocationSalesItemId}`}
+                  activeOpacity={0.85}
+                  style={styles.batchCard}
+                  onPress={() => onSelect(batch)}
+                >
+                  <View style={styles.batchIconBox}>
+                    <Ionicons name="cube-outline" size={34} color={COLORS.primary} />
+                  </View>
+
+                  <View style={styles.batchInfoBox}>
+                    <View style={styles.batchProductRow}>
+                      <Text style={styles.batchProductName} numberOfLines={1}>
+                        {batch.productName}
+                      </Text>
+
+                      <View style={styles.batchTypePill}>
+                        <Text style={styles.batchTypeText}>
+                          {formatBatchType(batch.productType)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.batchMetaText}>
+                      {formatSize(batch)} · Batch {batch.batchNo}
+                    </Text>
+
+                    <Text style={styles.batchPendingText}>
+                      Pending {batch.pending} of {batch.totalAllocated}
+                    </Text>
+                  </View>
+
+                  <Ionicons
+                    name="chevron-forward"
+                    size={30}
+                    color={COLORS.textSecondary}
+                  />
+                </TouchableOpacity>
+              ))}
+
+              {!batches.length && (
+                <View style={styles.emptyBox}>
+                  <Text style={styles.infoText}>No available batch found</Text>
+                </View>
+              )}
+
+              <TouchableOpacity style={styles.skipBatchButton} onPress={onSkip}>
+                <Text style={styles.skipBatchText}>Skip batch selection</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function ConfirmNewSaleModal({
+  visible,
+  customer,
+  batch,
+  paymentMethod,
+  amount,
+  emptyCylinderQty,
+  otp,
+  loading,
+  onClose,
+  onPaymentMethodChange,
+  onAmountChange,
+  onEmptyMinus,
+  onEmptyPlus,
+  onOtpChange,
+  onSubmit,
+}: {
+  visible: boolean;
+  customer: FoundCustomer | null;
+  batch: BatchItem | null;
+  paymentMethod: "CASH" | "UPI" | "ONLINE" | "CREDIT";
+  amount: string;
+  emptyCylinderQty: number;
+  otp: string;
+  loading: boolean;
+  onClose: () => void;
+  onPaymentMethodChange: (value: "CASH" | "UPI" | "ONLINE" | "CREDIT") => void;
+  onAmountChange: (value: string) => void;
+  onEmptyMinus: () => void;
+  onEmptyPlus: () => void;
+  onOtpChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.finderOverlay}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={styles.confirmSaleSheet}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.confirmSaleScrollContent}
+              >
+                <View style={styles.finderHandle} />
+
+                <View style={styles.finderHeader}>
+                  <Text style={styles.finderTitle}>Confirm Delivery</Text>
+
+                  <TouchableOpacity onPress={onClose}>
+                    <Ionicons
+                      name="close-outline"
+                      size={34}
+                      color={COLORS.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.customerPreviewBox}>
+                  <Text style={styles.customerPreviewName}>
+                    {customer?.name || ""}
+                  </Text>
+
+                  <View style={styles.customerAddressRow}>
+                    <Ionicons
+                      name="location-outline"
+                      size={18}
+                      color={COLORS.textSecondary}
+                    />
+                    <Text style={styles.customerPreviewAddress}>
+                      {customer?.address || ""}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.customerPreviewMeta}>
+                    {formatBatchType(batch?.productType)} · Qty: 1 ·{" "}
+                    {customer?.phone || ""}
+                  </Text>
+                </View>
+
+                <Text style={styles.inputLabel}>Payment Method</Text>
+
+                <View style={styles.paymentRow}>
+                  {(["CASH", "UPI", "ONLINE", "CREDIT"] as const).map((method) => (
+                    <TouchableOpacity
+                      key={method}
+                      style={[
+                        styles.paymentButton,
+                        paymentMethod === method && styles.paymentButtonActive,
+                      ]}
+                      onPress={() => onPaymentMethodChange(method)}
+                    >
+                      <Text
+                        style={[
+                          styles.paymentButtonText,
+                          paymentMethod === method && styles.paymentButtonTextActive,
+                        ]}
+                      >
+                        {method === "CASH"
+                          ? "Cash"
+                          : method === "UPI"
+                          ? "UPI"
+                          : method === "ONLINE"
+                          ? "Online"
+                          : "Credit"}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.inputLabel}>Amount (₹)</Text>
+
+                <TextInput
+                  style={styles.amountInput}
+                  keyboardType="numeric"
+                  value={amount}
+                  onChangeText={onAmountChange}
+                />
+
+                <Text style={styles.inputLabel}>Empty Cylinders Collected</Text>
+
+                <View style={styles.emptyCounterRow}>
+                  <TouchableOpacity style={styles.emptyCounterButton} onPress={onEmptyMinus}>
+                    <Text style={styles.emptyCounterText}>-</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.emptyCounterValueBox}>
+                    <Text style={styles.emptyCounterValue}>{emptyCylinderQty}</Text>
+                  </View>
+
+                  <TouchableOpacity style={styles.emptyCounterButton} onPress={onEmptyPlus}>
+                    <Text style={styles.emptyCounterText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.inputLabel}>Customer OTP (4-digit)</Text>
+                <Text style={styles.otpHelp}>
+                  Ask the customer for the OTP sent to {customer?.phone || ""}.
+                </Text>
+
+                <TextInput
+                  style={styles.otpInput}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  value={otp}
+                  onChangeText={onOtpChange}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.verifyButton,
+                    (otp.length !== 4 || !batch || loading) &&
+                      styles.verifyButtonDisabled,
+                  ]}
+                  disabled={otp.length !== 4 || !batch || loading}
+                  onPress={onSubmit}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={COLORS.white} />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={26}
+                        color={COLORS.white}
+                      />
+                      <Text style={styles.verifyButtonText}>
+                        Verify OTP & Save
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
   finderScrollContent: {
     paddingBottom: 12,
   },
@@ -953,6 +1203,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     padding: 18,
     alignItems: "center",
+    marginTop: 10,
   },
   scannerFab: {
     position: "absolute",
@@ -998,20 +1249,20 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   finderTitle: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: "800",
+    fontSize: 21,
+    lineHeight: 28,
+    fontWeight: "900",
     color: COLORS.textPrimary,
   },
   finderTabs: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
+    gap: 12,
+    marginBottom: 22,
   },
   finderTab: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: 10,
+    minHeight: 56,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.white,
@@ -1020,59 +1271,59 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 10,
     paddingHorizontal: 12,
-    gap: 6,
+    gap: 8,
   },
   finderTabActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
   },
   finderTabText: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "800",
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "900",
     color: COLORS.textPrimary,
   },
   finderTabTextActive: {
     color: COLORS.white,
   },
   inputLabel: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "800",
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "900",
     color: COLORS.textPrimary,
-    marginBottom: 8,
-    marginTop: 12
+    marginBottom: 10,
+    marginTop: 14,
   },
   consumerInput: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 10,
-    padding: 16,
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "600",
+    borderRadius: 14,
+    padding: 18,
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: "700",
     color: COLORS.textPrimary,
     backgroundColor: COLORS.white,
-    marginBottom: 10,
+    marginBottom: 18,
   },
   findCustomerButton: {
-    minHeight: 44,
-    borderRadius: 10,
+    minHeight: 68,
+    borderRadius: 16,
     backgroundColor: COLORS.primary,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 10,
     paddingHorizontal: 16,
-    gap: 8,
+    gap: 12,
   },
   findCustomerButtonDisabled: {
     backgroundColor: "#8BB5F8",
   },
   findCustomerButtonText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "800",
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "900",
     color: COLORS.white,
   },
   cameraBlock: {
@@ -1159,6 +1410,123 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: "800",
   },
+
+  batchSheet: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 24,
+    maxHeight: "88%",
+  },
+  batchHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  batchTitle: {
+    flex: 1,
+    marginLeft: 18,
+    fontSize: 22,
+    fontWeight: "900",
+    color: COLORS.textPrimary,
+  },
+  batchCustomerBox: {
+    backgroundColor: "#F8F9FB",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 18,
+  },
+  batchCustomerName: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: COLORS.textPrimary,
+    marginBottom: 6,
+  },
+  batchCustomerMeta: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+  },
+  batchSubtitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    marginBottom: 18,
+  },
+  batchCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+  },
+  batchIconBox: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+    backgroundColor: COLORS.blueSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  batchInfoBox: {
+    flex: 1,
+  },
+  batchProductRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  batchProductName: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: COLORS.textPrimary,
+    flexShrink: 1,
+  },
+  batchTypePill: {
+    backgroundColor: "#F1F1F2",
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  batchTypeText: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: COLORS.textSecondary,
+  },
+  batchMetaText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+    marginTop: 6,
+  },
+  batchPendingText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  skipBatchButton: {
+    height: 70,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  skipBatchText: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: COLORS.textPrimary,
+  },
+
   confirmSaleSheet: {
     backgroundColor: COLORS.white,
     borderTopLeftRadius: 18,
@@ -1166,18 +1534,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 18,
-    maxHeight: "80%",
+    maxHeight: "88%",
+  },
+  confirmSaleScrollContent: {
+    paddingBottom: 24,
   },
   customerPreviewBox: {
     backgroundColor: "#F8F9FB",
     borderRadius: 14,
     padding: 18,
-    marginBottom: 24,
+    marginBottom: 18,
   },
   customerPreviewName: {
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "500",
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "900",
     color: COLORS.textPrimary,
     marginBottom: 10,
   },
@@ -1189,58 +1560,15 @@ const styles = StyleSheet.create({
   },
   customerPreviewAddress: {
     fontSize: 16,
-    lineHeight: 20,
+    lineHeight: 22,
     color: COLORS.textSecondary,
-    fontWeight: "600",
+    fontWeight: "700",
+    flex: 1,
   },
   customerPreviewMeta: {
     fontSize: 16,
     color: COLORS.textSecondary,
-    fontWeight: "600",
-  },
-  productSearchBox: {
-    padding: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  productSearchInput: {
-    flex: 1,
-    height: "100%",
-    marginLeft: 8,
-    fontSize: 14,
-    lineHeight: 18,
-    color: COLORS.textPrimary,
-  },
-  productDropdown: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    backgroundColor: COLORS.white,
-    overflow: "hidden",
-    marginBottom: 18,
-  },
-  productDropdownItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  productDropdownName: {
-    fontSize: 15,
     fontWeight: "700",
-    color: COLORS.textPrimary,
-  },
-  productDropdownPrice: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: COLORS.primary,
   },
   paymentRow: {
     flexDirection: "row",
@@ -1255,16 +1583,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.white,
-    padding: 12
+    padding: 15,
   },
   paymentButtonActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
   },
   paymentButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "800",
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "900",
     color: COLORS.textPrimary,
   },
   paymentButtonTextActive: {
@@ -1275,12 +1603,12 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: 14,
     paddingHorizontal: 20,
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "800",
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "900",
     color: COLORS.textPrimary,
     marginBottom: 24,
-    padding: 12
+    padding: 16,
   },
   emptyCounterRow: {
     flexDirection: "row",
@@ -1289,9 +1617,9 @@ const styles = StyleSheet.create({
     marginBottom: 26,
   },
   emptyCounterButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 14,
+    width: 86,
+    height: 86,
+    borderRadius: 16,
     backgroundColor: "#F3F4F6",
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -1299,68 +1627,66 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   emptyCounterText: {
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "500",
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "900",
     color: COLORS.textPrimary,
   },
   emptyCounterValueBox: {
     flex: 1,
-    borderRadius: 14,
+    height: 86,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
-    padding: 12
   },
   emptyCounterValue: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "600",
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "900",
     color: COLORS.textPrimary,
   },
   otpHelp: {
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 16,
+    lineHeight: 22,
     color: COLORS.textSecondary,
-    fontWeight: "600",
+    fontWeight: "700",
     marginTop: -6,
     marginBottom: 12,
   },
   otpInput: {
     alignSelf: "center",
-    paddingLeft: 24,
+    width: 220,
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 14,
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "500",
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "900",
     textAlign: "center",
-    letterSpacing: 24,
+    letterSpacing: 18,
     color: COLORS.textPrimary,
     marginBottom: 26,
   },
   verifyButton: {
+    minHeight: 72,
     borderRadius: 16,
     backgroundColor: COLORS.buttonGreen,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 14,
-    padding: 12
+    padding: 12,
   },
   verifyButtonDisabled: {
     backgroundColor: "#9AD6AB",
   },
   verifyButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "500",
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "900",
     color: COLORS.white,
-  },
-  confirmSaleScrollContent: {
-    paddingBottom: 24,
   },
 });
