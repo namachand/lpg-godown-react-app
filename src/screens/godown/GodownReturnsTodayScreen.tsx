@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -11,27 +11,49 @@ import {
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, EYEBROW, RADIUS, WEIGHT } from '../../constants/designSystem';
+import { useDateRange } from '../../context/DateRangeContext';
 import {
   approveReturnByCondition,
+  approveTransferEmptyReturn,
   getReturnsToday,
+  getTransferEmptyReturns,
 } from '../../services/godownService';
 
 export default function GodownReturnsTodayScreen() {
+  const { rangeKey } = useDateRange();
   const [returns, setReturns] = useState<any[]>([]);
+  const [transferReturns, setTransferReturns] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [approvingKey, setApprovingKey] = useState<string | null>(null);
+  const [approvingTransferId, setApprovingTransferId] = useState<number | null>(null);
 
   const fetchReturns = async () => {
     try {
       setLoading(true);
-      const data = await getReturnsToday();
+      const [data, transfers] = await Promise.all([
+        getReturnsToday(),
+        getTransferEmptyReturns().catch(() => []),
+      ]);
       setReturns(Array.isArray(data) ? data : []);
+      setTransferReturns(Array.isArray(transfers) ? transfers : []);
     } catch (error) {
       console.log('Returns today error:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApproveTransfer = async (id: number) => {
+    try {
+      setApprovingTransferId(id);
+      await approveTransferEmptyReturn(id);
+      await fetchReturns();
+    } catch (error) {
+      console.log('Approve transfer empty return error:', error);
+    } finally {
+      setApprovingTransferId(null);
     }
   };
 
@@ -40,6 +62,10 @@ export default function GodownReturnsTodayScreen() {
       fetchReturns();
     }, [])
   );
+
+  useEffect(() => {
+    fetchReturns();
+  }, [rangeKey]);
 
   const handleApprove = async (
     driverId: number,
@@ -68,7 +94,7 @@ export default function GodownReturnsTodayScreen() {
 
       <View style={styles.pageHeader}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+          <Ionicons name="arrow-back" size={24} color={DS.textPrimary} />
         </TouchableOpacity>
 
         <View>
@@ -81,15 +107,21 @@ export default function GodownReturnsTodayScreen() {
 
       {loading ? (
         <View style={styles.loaderBox}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color={DS.primary} />
         </View>
       ) : (
         <View style={styles.content}>
-          {returns.map((driver) => (
+          {returns.filter((driver) => driver.total > 0).length === 0 &&
+            transferReturns.length === 0 && (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>No returns submitted today</Text>
+              </View>
+            )}
+          {returns.filter((driver) => driver.total > 0).map((driver) => (
             <View key={driver.driver_id} style={styles.driverCard}>
               <View style={styles.driverHeader}>
                 <View style={styles.avatar}>
-                  <Ionicons name="person-outline" size={22} color={COLORS.primary} />
+                  <Ionicons name="person-outline" size={22} color={DS.primary} />
                 </View>
 
                 <View style={{ flex: 1 }}>
@@ -118,7 +150,7 @@ export default function GodownReturnsTodayScreen() {
                     <Ionicons
                       name="cube-outline"
                       size={16}
-                      color={COLORS.textSecondary}
+                      color={DS.textSecondary}
                     />
 
                     <View>
@@ -139,8 +171,8 @@ export default function GodownReturnsTodayScreen() {
                 title="Empty Cylinders"
                 count={driver.empty}
                 condition="empty"
-                color={COLORS.orange}
-                bg={COLORS.orangeSoft}
+                color={DS.orange}
+                bg={DS.orangeSoft}
                 open={openKey === `${driver.driver_id}-empty`}
                 loading={approvingKey === `${driver.driver_id}-empty`}
                 onToggle={() =>
@@ -157,8 +189,8 @@ export default function GodownReturnsTodayScreen() {
                 title="Normal Cylinder"
                 count={driver.normal}
                 condition="normal"
-                color={COLORS.primary}
-                bg={COLORS.blueSoft}
+                color={DS.primary}
+                bg={DS.blueSoft}
                 open={openKey === `${driver.driver_id}-normal`}
                 loading={approvingKey === `${driver.driver_id}-normal`}
                 onToggle={() =>
@@ -175,8 +207,8 @@ export default function GodownReturnsTodayScreen() {
                 title="Defective Cylinder"
                 count={driver.defective}
                 condition="defective"
-                color="#EF4444"
-                bg="#FEE2E2"
+                color={DS.red}
+                bg={DS.redSoft}
                 open={openKey === `${driver.driver_id}-defective`}
                 loading={approvingKey === `${driver.driver_id}-defective`}
                 onToggle={() =>
@@ -190,6 +222,51 @@ export default function GodownReturnsTodayScreen() {
               />
             </View>
           ))}
+
+          {transferReturns.length > 0 && (
+            <>
+              <Text style={styles.sectionHeading}>Transfer Empty Returns</Text>
+
+              {transferReturns.map((item) => (
+                <View key={`transfer-${item.id}`} style={styles.driverCard}>
+                  <View style={styles.driverHeader}>
+                    <View style={styles.avatar}>
+                      <Ionicons
+                        name="swap-horizontal-outline"
+                        size={22}
+                        color={DS.primary}
+                      />
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.driverName}>{item.productName}</Text>
+                      <Text style={styles.driverTime}>
+                        Transfer #{item.transferId}
+                        {item.toCustomer ? ` · ${item.toCustomer}` : ''}
+                      </Text>
+                    </View>
+
+                    <View style={styles.totalBox}>
+                      <Text style={styles.totalValue}>{item.quantity}</Text>
+                      <Text style={styles.totalLabel}>EMPTY</Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.approveButton}
+                    onPress={() => handleApproveTransfer(item.id)}
+                    disabled={approvingTransferId === item.id}
+                  >
+                    <Text style={styles.approveButtonText}>
+                      {approvingTransferId === item.id
+                        ? 'Approving...'
+                        : `Approve ${item.quantity} empty`}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </>
+          )}
         </View>
       )}
     </ScreenContainer>
@@ -213,7 +290,7 @@ function ApproveBox({
         styles.approveBox,
         {
           borderColor: color,
-          backgroundColor: open ? bg : COLORS.white,
+          backgroundColor: open ? bg : DS.white,
         },
       ]}
     >
@@ -240,7 +317,7 @@ function ApproveBox({
         <Ionicons
           name={open ? 'chevron-up' : 'chevron-down'}
           size={20}
-          color={COLORS.textSecondary}
+          color={DS.textSecondary}
         />
       </TouchableOpacity>
 
@@ -301,36 +378,49 @@ const styles = StyleSheet.create({
   pageHeader: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DS.border,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
   },
   title: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
   subtitle: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 2,
   },
   content: {
     padding: 16,
     paddingBottom: 120,
   },
+  sectionHeading: {
+    ...TYPO.s1,
+    color: DS.textPrimary,
+    marginTop: 6,
+    marginBottom: 12,
+  },
   loaderBox: {
     height: 400,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  emptyBox: {
+    paddingVertical: 48,
+    alignItems: 'center',
+  },
+  emptyText: {
+    ...TYPO.b2,
+    color: DS.textSecondary,
+  },
   driverCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 14,
     marginBottom: 14,
   },
@@ -342,65 +432,68 @@ const styles = StyleSheet.create({
   avatar: {
     width: 42,
     height: 42,
-    borderRadius: 12,
-    backgroundColor: COLORS.blueSoft,
+    borderRadius: RADIUS.md,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   driverName: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   driverTime: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 2,
   },
   totalBox: {
     alignItems: 'center',
   },
   totalValue: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
   totalLabel: {
+    ...EYEBROW,
     fontSize: 9,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    letterSpacing: 0.6,
+    color: DS.textSecondary,
   },
   tableHeader: {
     flexDirection: 'row',
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DS.border,
   },
   tableHeadText: {
+    ...EYEBROW,
     fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    letterSpacing: 0.5,
+    color: DS.textSecondary,
   },
   emptyHead: {
+    ...EYEBROW,
     width: 50,
     fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.orange,
+    letterSpacing: 0.5,
+    color: DS.orangeText,
     textAlign: 'center',
   },
   normalHead: {
+    ...EYEBROW,
     width: 55,
     fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.primary,
+    letterSpacing: 0.5,
+    color: DS.primary,
     textAlign: 'center',
   },
   defHead: {
+    ...EYEBROW,
     width: 42,
     fontSize: 10,
-    fontWeight: '900',
-    color: '#EF4444',
+    letterSpacing: 0.5,
+    color: DS.red,
     textAlign: 'center',
   },
   itemRow: {
@@ -408,7 +501,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: DS.divider,
   },
   itemLeft: {
     flex: 1.6,
@@ -417,44 +510,47 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   itemName: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
   itemSub: {
-    fontSize: 10,
-    color: COLORS.textSecondary,
+    ...TYPO.c3,
+    color: DS.textSecondary,
     marginTop: 1,
   },
   emptyValue: {
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
     width: 50,
     textAlign: 'center',
-    color: COLORS.orange,
-    fontWeight: '900',
+    color: DS.orangeText,
   },
   normalValue: {
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
     width: 55,
     textAlign: 'center',
-    color: COLORS.primary,
-    fontWeight: '900',
+    color: DS.primary,
   },
   defValue: {
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
     width: 42,
     textAlign: 'center',
-    color: '#EF4444',
-    fontWeight: '900',
+    color: DS.red,
   },
   approveLabel: {
+    ...EYEBROW,
     fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    color: DS.textSecondary,
     marginTop: 14,
     marginBottom: 8,
     letterSpacing: 0.8,
   },
   approveBox: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     marginBottom: 10,
     overflow: 'hidden',
   },
@@ -467,19 +563,18 @@ const styles = StyleSheet.create({
   conditionIcon: {
     width: 38,
     height: 38,
-    borderRadius: 11,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   conditionTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   conditionSub: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 2,
   },
   approveInnerRow: {
@@ -489,26 +584,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   innerText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
   innerValue: {
-    fontSize: 14,
-    fontWeight: '900',
+    ...TYPO.s2,
   },
   approveButton: {
     marginHorizontal: 12,
     marginBottom: 12,
     height: 44,
-    backgroundColor: COLORS.textPrimary,
-    borderRadius: 10,
+    backgroundColor: DS.textPrimary,
+    borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   approveButtonText: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '900',
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.white,
   },
 });

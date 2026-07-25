@@ -1,49 +1,49 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import { DeviceEventEmitter, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import { APP_ROLE_KEY, APP_ROLES } from '../../constants/appRole';
-import { COLORS } from '../../constants/colors';
+import { AUTH_TOKEN_KEY, AUTH_USER_KEY } from '../../constants/auth';
+import { DS, TYPO, EYEBROW, RADIUS, PALETTE, WEIGHT } from '../../constants/designSystem';
 
 const activities = [
   {
     title: '50 Domestic cylinders received from HP Gas Depot',
     time: 'Today, 9:30 AM',
     icon: 'arrow-down-circle-outline',
-    color: COLORS.green,
-    bg: COLORS.greenSoft,
+    color: DS.green,
+    bg: DS.greenSoft,
   },
   {
     title: '15 Domestic cylinders allocated to Ravi Kumar',
     time: 'Today, 10:15 AM',
     icon: 'arrow-up-circle-outline',
-    color: COLORS.primary,
-    bg: COLORS.blueSoft,
+    color: DS.primary,
+    bg: DS.blueSoft,
   },
   {
     title: '12 empty cylinders returned by Suresh Yadav',
     time: 'Today, 11:00 AM',
     icon: 'refresh-outline',
-    color: COLORS.orange,
-    bg: COLORS.orangeSoft,
+    color: DS.orange,
+    bg: DS.orangeSoft,
   },
   {
     title: '20 Commercial cylinders allocated to Amit Singh',
     time: 'Today, 12:00 PM',
     icon: 'arrow-up-circle-outline',
-    color: COLORS.primary,
-    bg: COLORS.blueSoft,
+    color: DS.primary,
+    bg: DS.blueSoft,
   },
 ];
 
 export default function GodownProfileScreen() {
-  const switchToDriver = async () => {
-    await AsyncStorage.setItem(APP_ROLE_KEY, APP_ROLES.DRIVER);
-    DeviceEventEmitter.emit('APP_ROLE_CHANGED', APP_ROLES.DRIVER);
-    router.replace('/');
+  const handleSignOut = async () => {
+    await AsyncStorage.multiRemove([AUTH_TOKEN_KEY, AUTH_USER_KEY]);
+    Alert.alert('Signed out', 'You have been signed out successfully.');
+    router.replace('/login');
   };
 
   return (
@@ -60,7 +60,7 @@ export default function GodownProfileScreen() {
             <View>
               <Text style={styles.name}>Ravi Kumar</Text>
               <View style={styles.phoneRow}>
-                <Ionicons name="call-outline" size={14} color={COLORS.textSecondary} />
+                <Ionicons name="call-outline" size={14} color={DS.textSecondary} />
                 <Text style={styles.phone}>+91 9876543210</Text>
               </View>
             </View>
@@ -68,7 +68,7 @@ export default function GodownProfileScreen() {
 
           <View style={styles.infoRow}>
             <View style={styles.infoBox}>
-              <Ionicons name="shield-outline" size={16} color={COLORS.primary} />
+              <Ionicons name="shield-outline" size={16} color={DS.primary} />
               <View>
                 <Text style={styles.infoLabel}>ROLE</Text>
                 <Text style={styles.infoValue}>Manager</Text>
@@ -76,7 +76,7 @@ export default function GodownProfileScreen() {
             </View>
 
             <View style={styles.infoBox}>
-              <Ionicons name="business-outline" size={16} color={COLORS.green} />
+              <Ionicons name="business-outline" size={16} color={DS.green} />
               <View>
                 <Text style={styles.infoLabel}>AGENCY</Text>
                 <Text style={styles.infoValue}>Sri Gas</Text>
@@ -84,9 +84,8 @@ export default function GodownProfileScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.logoutButton} onPress={switchToDriver}>
-            <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-            <Text style={styles.logoutText}>Switch to Driver</Text>
+          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+            <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
 
@@ -128,10 +127,10 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   profileCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 18,
     marginBottom: 18,
   },
@@ -144,20 +143,18 @@ const styles = StyleSheet.create({
     width: 62,
     height: 62,
     borderRadius: 31,
-    backgroundColor: COLORS.blueSoft,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 18,
   },
   avatarText: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.primary,
+    ...TYPO.s1,
+    color: DS.primary,
   },
   name: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
   phoneRow: {
     flexDirection: 'row',
@@ -166,8 +163,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   phone: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
   },
   infoRow: {
     flexDirection: 'row',
@@ -176,44 +173,68 @@ const styles = StyleSheet.create({
   },
   infoBox: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.md,
     padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   infoLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textTertiary,
   },
   infoValue: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    color: DS.textPrimary,
     marginTop: 2,
   },
-  logoutButton: {
-    height: 52,
+  roleSwitchWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  signOutButton: {
+    minHeight: 42,
     borderWidth: 1,
-    borderColor: '#FECACA',
-    borderRadius: 12,
+    borderColor: PALETTE.red100,
+    borderRadius: RADIUS.md,
+    backgroundColor: DS.redSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    backgroundColor: '#FEF2F2',
   },
-  logoutText: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#EF4444',
+  signOutText: {
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.red,
+  },
+  roleButton: {
+    flexGrow: 1,
+    flexBasis: '30%',
+    minHeight: 50,
+    borderWidth: 1,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
+    backgroundColor: DS.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  roleButtonActive: {
+    borderColor: DS.primary,
+    backgroundColor: DS.primarySoft,
+  },
+  roleButtonText: {
+    ...TYPO.c2,
+    color: DS.textSecondary,
+    textAlign: 'center',
+  },
+  roleButtonTextActive: {
+    color: DS.primary,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginBottom: 12,
   },
   filterRow: {
@@ -224,29 +245,29 @@ const styles = StyleSheet.create({
   filterButton: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.pill,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     alignItems: 'center',
   },
   filterActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: DS.primary,
+    borderColor: DS.primary,
   },
   filterText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
   filterTextActive: {
-    color: COLORS.white,
+    color: DS.white,
   },
   activityCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 14,
     marginBottom: 10,
     flexDirection: 'row',
@@ -254,7 +275,7 @@ const styles = StyleSheet.create({
   activityIcon: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -263,14 +284,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activityTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    lineHeight: 19,
+    ...TYPO.b4,
+    color: DS.textPrimary,
   },
   activityTime: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 5,
   },
 });

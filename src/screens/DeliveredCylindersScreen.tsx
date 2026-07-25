@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -11,11 +12,11 @@ import {
 } from 'react-native';
 import AppHeader from '../components/common/AppHeader';
 import ScreenContainer from '../components/common/ScreenContainer';
-import { COLORS } from '../constants/colors';
+import { AUTH_USER_KEY } from '../constants/auth';
+import { DS, TYPO, RADIUS, PALETTE, WEIGHT } from '../constants/designSystem';
+import { useDateRange } from '../context/DateRangeContext';
 import api from '../services/api';
 import { DriverDeliveriesResponse } from '../types';
-
-const DRIVER_ID = 2;
 
 const formatTime = (value?: string | null) => {
   if (!value) return '';
@@ -32,16 +33,44 @@ const formatTime = (value?: string | null) => {
 
 export default function DeliveredCylindersScreen() {
   const router = useRouter();
+  const { rangeKey } = useDateRange();
+  const [driverId, setDriverId] = useState<number | null>(null);
   const [data, setData] = useState<DriverDeliveriesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    const loadDriverId = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(AUTH_USER_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        const id = Number(parsed?.id);
+
+        if (id && !Number.isNaN(id)) {
+          setDriverId(id);
+        } else {
+          setError('Driver not found in session');
+          setLoading(false);
+        }
+      } catch {
+        setError('Failed to load driver session');
+        setLoading(false);
+      }
+    };
+
+    loadDriverId();
+  }, []);
+
   const fetchDeliveredDeliveries = useCallback(async () => {
+    if (!driverId) {
+      return;
+    }
+
     try {
       setError('');
       const response = await api.get(
-        `/drivers/${DRIVER_ID}/app-deliveries?flag=delivered`
+        `/drivers/${driverId}/app-deliveries?flag=delivered`
       );
 
       if (response.data?.success) {
@@ -56,17 +85,21 @@ export default function DeliveredCylindersScreen() {
       );
       setError('Failed to load delivered cylinders');
     }
-  }, []);
+  }, [driverId]);
 
   useEffect(() => {
     const load = async () => {
+      if (!driverId) {
+        return;
+      }
+
       setLoading(true);
       await fetchDeliveredDeliveries();
       setLoading(false);
     };
 
     load();
-  }, [fetchDeliveredDeliveries]);
+  }, [fetchDeliveredDeliveries, driverId, rangeKey]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -89,14 +122,14 @@ export default function DeliveredCylindersScreen() {
       <View style={styles.content}>
         <View style={styles.titleRow}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={28} color={COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={28} color={DS.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.pageTitle}>Delivered Cylinders</Text>
         </View>
 
         {loading ? (
           <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <ActivityIndicator size="large" color={DS.primary} />
             <Text style={styles.infoText}>Loading delivered cylinders...</Text>
           </View>
         ) : error ? (
@@ -114,7 +147,7 @@ export default function DeliveredCylindersScreen() {
                   <Ionicons
                     name="checkmark-circle-outline"
                     size={26}
-                    color={COLORS.green}
+                    color={DS.green}
                   />
                 </View>
                 <View>
@@ -135,7 +168,7 @@ export default function DeliveredCylindersScreen() {
                         <Ionicons
                           name="location-outline"
                           size={14}
-                          color={COLORS.textSecondary}
+                          color={DS.textSecondary}
                         />
                         <Text style={styles.address}>{item.address}</Text>
                       </View>
@@ -187,13 +220,12 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   pageTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
   summaryCard: {
-    backgroundColor: '#EEF8EE',
-    borderRadius: 16,
+    backgroundColor: DS.greenSoft,
+    borderRadius: RADIUS.lg,
     padding: 16,
     marginBottom: 14,
   },
@@ -205,27 +237,25 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#DDF2DF',
+    backgroundColor: PALETTE.green100,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   summaryValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: COLORS.green,
-    lineHeight: 26,
+    ...TYPO.s1,
+    color: PALETTE.green600,
   },
   summaryLabel: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 2,
   },
   deliveryCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
+    backgroundColor: DS.card,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     padding: 14,
     marginBottom: 10,
   },
@@ -238,9 +268,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   name: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginBottom: 6,
   },
   addressRow: {
@@ -249,14 +278,14 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   address: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginLeft: 4,
     flexShrink: 1,
   },
   meta: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 2,
   },
   rightWrap: {
@@ -264,21 +293,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   paymentBadge: {
-    backgroundColor: COLORS.greenSoft,
-    borderRadius: 14,
+    backgroundColor: DS.greenSoft,
+    borderRadius: RADIUS.pill,
     paddingHorizontal: 12,
     paddingVertical: 6,
     minWidth: 48,
     alignItems: 'center',
   },
   paymentBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.green,
+    ...TYPO.c2,
+    fontWeight: WEIGHT.semibold,
+    color: PALETTE.green600,
   },
   timeText: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 10,
   },
   centerBox: {
@@ -287,30 +316,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   infoText: {
+    ...TYPO.b3,
     marginTop: 12,
-    color: COLORS.textSecondary,
-    fontSize: 14,
+    color: DS.textSecondary,
   },
   errorText: {
-    color: '#dc2626',
-    fontSize: 14,
+    ...TYPO.b3,
+    color: DS.red,
     marginBottom: 12,
   },
   retryButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: DS.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
   },
   retryButtonText: {
-    color: COLORS.white,
-    fontWeight: '600',
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.white,
   },
   emptyBox: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
+    backgroundColor: DS.card,
+    borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     padding: 18,
     alignItems: 'center',
   },

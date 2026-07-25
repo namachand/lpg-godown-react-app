@@ -3,13 +3,14 @@ import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Modal,
+  ScrollView,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, RADIUS } from '../../constants/designSystem';
 
 type PaymentMethod = 'CASH' | 'UPI' | 'ONLINE' | 'CREDIT';
 
@@ -56,16 +57,22 @@ export default function ConfirmDeliveryModal({
           <View style={styles.headerRow}>
             <Text style={styles.title}>Confirm Delivery</Text>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+              <Ionicons name="close" size={22} color={DS.textSecondary} />
             </TouchableOpacity>
           </View>
 
+          <ScrollView
+            style={styles.scrollArea}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
           {sale ? (
             <>
               <View style={styles.infoCard}>
                 <Text style={styles.name}>{sale.customerName}</Text>
                 <View style={styles.addressRow}>
-                  <Ionicons name="location-outline" size={14} color={COLORS.textSecondary} />
+                  <Ionicons name="location-outline" size={14} color={DS.textSecondary} />
                   <Text style={styles.address}>{sale.address}</Text>
                 </View>
                 <Text style={styles.meta}>
@@ -85,6 +92,7 @@ export default function ConfirmDeliveryModal({
                     onPress={() => setPaymentMethod(method)}
                   >
                     <Text
+                      numberOfLines={1}
                       style={[
                         styles.payText,
                         paymentMethod === method && styles.payTextActive,
@@ -141,16 +149,17 @@ export default function ConfirmDeliveryModal({
                 }
               >
                 {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
+                  <ActivityIndicator color={DS.white} />
                 ) : (
                   <>
-                    <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.white} />
+                    <Ionicons name="checkmark-circle-outline" size={18} color={DS.white} />
                     <Text style={styles.submitText}>Save & Mark Delivered</Text>
                   </>
                 )}
               </TouchableOpacity>
             </>
           ) : null}
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -164,18 +173,25 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    backgroundColor: DS.card,
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 24,
+    maxHeight: '88%',
+  },
+  scrollArea: {
+    marginTop: 8,
+  },
+  scrollContent: {
+    paddingBottom: 8,
   },
   handle: {
     width: 64,
     height: 4,
-    borderRadius: 2,
-    backgroundColor: '#D1D5DB',
+    borderRadius: RADIUS.pill,
+    backgroundColor: DS.borderStrong,
     alignSelf: 'center',
     marginBottom: 14,
   },
@@ -185,21 +201,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
   infoCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.lg,
     padding: 14,
     marginTop: 14,
     marginBottom: 16,
   },
   name: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginBottom: 6,
   },
   addressRow: {
@@ -209,107 +223,104 @@ const styles = StyleSheet.create({
   },
   address: {
     marginLeft: 4,
-    color: COLORS.textSecondary,
-    fontSize: 13,
+    color: DS.textSecondary,
+    ...TYPO.b3,
   },
   meta: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
+    color: DS.textSecondary,
+    ...TYPO.b3,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    color: DS.textPrimary,
     marginBottom: 8,
   },
   paymentRow: {
     flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 14,
   },
   payBtn: {
-    minWidth: 68,
-    height: 38,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+    flex: 1,
+    height: 32,
+    paddingHorizontal: 6,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
+    borderColor: DS.border,
+    backgroundColor: DS.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   payBtnActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: DS.primary,
+    borderColor: DS.primary,
   },
   payText: {
-    color: COLORS.textPrimary,
-    fontSize: 13,
-    fontWeight: '600',
+    color: DS.textPrimary,
+    ...TYPO.c2,
+    fontSize: 12,
+    lineHeight: 16,
   },
   payTextActive: {
-    color: COLORS.white,
+    color: DS.white,
   },
   input: {
     height: 46,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 14,
-    backgroundColor: '#F9FAFB',
-    color: COLORS.textPrimary,
+    backgroundColor: DS.surface,
+    color: DS.textPrimary,
     marginBottom: 16,
   },
   qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     marginBottom: 16,
   },
   qtyBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
+    borderColor: DS.border,
+    backgroundColor: DS.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   qtyBtnText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   qtyValueBox: {
-    flex: 1,
-    height: 42,
-    borderRadius: 12,
+    minWidth: 56,
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
   },
   qtyValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   submitBtn: {
     height: 52,
-    borderRadius: 14,
-    backgroundColor: COLORS.buttonGreen,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.buttonGreen,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
   },
   submitText: {
-    color: COLORS.white,
-    fontSize: 17,
-    fontWeight: '800',
+    ...TYPO.s2,
+    color: DS.white,
   },
   disabled: {
     opacity: 0.7,

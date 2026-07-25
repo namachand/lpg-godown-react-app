@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DimensionValue } from 'react-native';
@@ -15,10 +16,9 @@ import {
 
 import AppHeader from '../components/common/AppHeader';
 import ScreenContainer from '../components/common/ScreenContainer';
-import { COLORS } from '../constants/colors';
+import { AUTH_USER_KEY } from '../constants/auth';
+import { DS, TYPO, EYEBROW, RADIUS, PALETTE } from '../constants/designSystem';
 import api from '../services/api';
-
-const DRIVER_ID = 2;
 
 type ProductType = 'DOMESTIC' | 'COMMERCIAL';
 
@@ -40,6 +40,8 @@ type AllocatedCylinderItem = {
   pending: number;
   lastAllocatedAt: string;
   latestSaleId: number;
+  allocatedDate?: string | null;
+  isCarryForward?: boolean;
 };
 
 type AllocatedResponse = {
@@ -49,6 +51,8 @@ type AllocatedResponse = {
     pending: number;
     returned?: number;
     defective?: number;
+    carriedForward?: number;
+    allocatedToday?: number;
   };
   items: AllocatedCylinderItem[];
 };
@@ -101,6 +105,7 @@ const getProgressWidth = (item: AllocatedCylinderItem): DimensionValue => {
 
 export default function AllocatedCylindersScreen() {
   const router = useRouter();
+  const [driverId, setDriverId] = useState<number | null>(null);
 
   const [data, setData] = useState<AllocatedResponse>({
     summary: {
@@ -126,12 +131,38 @@ export default function AllocatedCylindersScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    const loadDriverId = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(AUTH_USER_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        const id = Number(parsed?.id);
+
+        if (id && !Number.isNaN(id)) {
+          setDriverId(id);
+        } else {
+          setError('Driver not found in session');
+          setLoading(false);
+        }
+      } catch {
+        setError('Failed to load driver session');
+        setLoading(false);
+      }
+    };
+
+    loadDriverId();
+  }, []);
+
   const fetchAllocatedCylinders = useCallback(async () => {
+    if (!driverId) {
+      return;
+    }
+
     try {
       setError('');
 
       const response = await api.get(
-        `/drivers/${DRIVER_ID}/allocated-cylinders`
+        `/drivers/${driverId}/allocated-cylinders`
       );
 
       if (response.data?.success) {
@@ -158,11 +189,15 @@ export default function AllocatedCylindersScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [driverId]);
 
   useEffect(() => {
+    if (!driverId) {
+      return;
+    }
+
     fetchAllocatedCylinders();
-  }, [fetchAllocatedCylinders]);
+  }, [fetchAllocatedCylinders, driverId]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -170,7 +205,10 @@ export default function AllocatedCylindersScreen() {
   };
 
   const headerSubText = useMemo(() => {
-    return `${data.summary.totalAllocated} units · ${data.summary.delivered} delivered · ${data.summary.pending} pending`;
+    const base = `${data.summary.totalAllocated} units · ${data.summary.delivered} delivered · ${data.summary.pending} pending`;
+    const carried = Number(data.summary.carriedForward || 0);
+
+    return carried > 0 ? `${base} · ${carried} carried forward` : base;
   }, [data]);
 
   const openBatchDetail = async (item: AllocatedCylinderItem) => {
@@ -178,7 +216,7 @@ export default function AllocatedCylindersScreen() {
       setBatchLoading(true);
 
       const response = await api.get(
-        `/drivers/${DRIVER_ID}/allocated-batches/${item.allocationSalesItemId}`
+        `/drivers/${driverId}/allocated-batches/${item.allocationSalesItemId}`
       );
 
       if (response.data?.success) {
@@ -280,7 +318,7 @@ export default function AllocatedCylindersScreen() {
       setSubmitting(true);
 
       const response = await api.post('/drivers/in-hand/request', {
-        driver_id: DRIVER_ID,
+        driver_id: driverId,
         is_defective: isDefective,
         allocation_sale_id: selectedBatch.allocationSaleId,
         allocation_sales_item_id: selectedBatch.allocationSalesItemId,
@@ -334,8 +372,8 @@ export default function AllocatedCylindersScreen() {
             >
               <Ionicons
                 name="arrow-back"
-                size={30}
-                color={COLORS.textPrimary}
+                size={24}
+                color={DS.textPrimary}
               />
             </TouchableOpacity>
 
@@ -351,8 +389,8 @@ export default function AllocatedCylindersScreen() {
               <View style={styles.detailIconBox}>
                 <Ionicons
                   name="cube-outline"
-                  size={46}
-                  color={COLORS.primary}
+                  size={34}
+                  color={DS.primary}
                 />
               </View>
 
@@ -374,7 +412,7 @@ export default function AllocatedCylindersScreen() {
               <Ionicons
                 name="calendar-outline"
                 size={18}
-                color={COLORS.textSecondary}
+                color={DS.textSecondary}
               />
 
               <Text style={styles.metaText}>
@@ -395,24 +433,42 @@ export default function AllocatedCylindersScreen() {
               <DetailStat
                 label="TOTAL"
                 value={selectedBatch.totalAllocated}
-                color={COLORS.textPrimary}
-                bg="#FAFAFA"
+                color={DS.textPrimary}
+                bg={DS.surface}
               />
 
               <DetailStat
                 label="DELIVERED"
                 value={selectedBatch.delivered}
-                color={COLORS.green}
-                bg={COLORS.greenSoft}
+                color={PALETTE.green600}
+                bg={DS.greenSoft}
               />
 
               <DetailStat
                 label="PENDING"
                 value={selectedBatch.pending}
-                color={COLORS.orange}
-                bg={COLORS.orangeSoft}
+                color={DS.orangeText}
+                bg={DS.orangeSoft}
               />
             </View>
+
+            {((selectedBatch.returned ?? 0) > 0 || (selectedBatch.defective ?? 0) > 0) && (
+              <View style={styles.detailStatsRow}>
+                <DetailStat
+                  label="RETURNED"
+                  value={selectedBatch.returned ?? 0}
+                  color={DS.primary}
+                  bg={DS.primarySoft}
+                />
+
+                <DetailStat
+                  label="DEFECTIVE"
+                  value={selectedBatch.defective ?? 0}
+                  color={DS.red}
+                  bg={DS.redSoft}
+                />
+              </View>
+            )}
           </View>
 
           <View style={styles.smallStatsRow}>
@@ -420,8 +476,8 @@ export default function AllocatedCylindersScreen() {
               <View style={styles.smallStatIconBlue}>
                 <Ionicons
                   name="home-outline"
-                  size={28}
-                  color={COLORS.primary}
+                  size={24}
+                  color={DS.primary}
                 />
               </View>
 
@@ -439,8 +495,8 @@ export default function AllocatedCylindersScreen() {
               <View style={styles.smallStatIconOrange}>
                 <Ionicons
                   name="business-outline"
-                  size={28}
-                  color={COLORS.orange}
+                  size={24}
+                  color={DS.orange}
                 />
               </View>
 
@@ -462,8 +518,8 @@ export default function AllocatedCylindersScreen() {
               <View style={styles.weightLeft}>
                 <Ionicons
                   name="bag-handle-outline"
-                  size={24}
-                  color={COLORS.textSecondary}
+                  size={20}
+                  color={DS.textSecondary}
                 />
                 <Text style={styles.weightText}>
                   {getProductSize(selectedBatch)}
@@ -488,8 +544,8 @@ export default function AllocatedCylindersScreen() {
           >
             <Ionicons
               name="return-up-back-outline"
-              size={28}
-              color={COLORS.primary}
+              size={22}
+              color={DS.primary}
             />
             <Text style={styles.returnOutlineText}>Return in-hand to Godown</Text>
           </TouchableOpacity>
@@ -498,7 +554,7 @@ export default function AllocatedCylindersScreen() {
             style={styles.defectiveOutlineButton}
             onPress={openDefectiveModal}
           >
-            <Ionicons name="warning-outline" size={28} color="#E05252" />
+            <Ionicons name="warning-outline" size={22} color={DS.red} />
             <Text style={styles.defectiveOutlineText}>
               Report Defective Cylinder
             </Text>
@@ -510,9 +566,9 @@ export default function AllocatedCylindersScreen() {
           title="Return to Godown"
           subtitle={`Select items and set the count from batch ${selectedBatch.batchNo}`}
           icon="return-up-back-outline"
-          iconColor={COLORS.primary}
+          iconColor={DS.primary}
           buttonText="Confirm Return"
-          buttonColor="#8FB3F4"
+          buttonColor={DS.primary}
           items={counterItems}
           totalSelected={totalSelected}
           submitting={submitting}
@@ -526,9 +582,9 @@ export default function AllocatedCylindersScreen() {
           title="Report Defective"
           subtitle={`Select items and set the count from batch ${selectedBatch.batchNo}`}
           icon="warning-outline"
-          iconColor="#E05252"
+          iconColor={DS.red}
           buttonText="Submit Report"
-          buttonColor="#EFA0A0"
+          buttonColor={DS.red}
           items={counterItems}
           totalSelected={totalSelected}
           submitting={submitting}
@@ -555,7 +611,7 @@ export default function AllocatedCylindersScreen() {
             activeOpacity={0.8}
             onPress={() => router.back()}
           >
-            <Ionicons name="arrow-back" size={30} color={COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={30} color={DS.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.titleTextWrap}>
@@ -566,7 +622,7 @@ export default function AllocatedCylindersScreen() {
 
         {loading || batchLoading ? (
           <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <ActivityIndicator size="large" color={DS.primary} />
             <Text style={styles.infoText}>Loading allocated cylinders...</Text>
           </View>
         ) : error ? (
@@ -607,7 +663,7 @@ function AllocatedCard({ item }: { item: AllocatedCylinderItem }) {
     <View style={styles.card}>
       <View style={styles.cardTop}>
         <View style={styles.iconBox}>
-          <Ionicons name="cube-outline" size={48} color={COLORS.primary} />
+          <Ionicons name="cube-outline" size={30} color={DS.primary} />
         </View>
 
         <View style={styles.productInfo}>
@@ -631,11 +687,18 @@ function AllocatedCard({ item }: { item: AllocatedCylinderItem }) {
             <Ionicons
               name="calendar-outline"
               size={17}
-              color={COLORS.textSecondary}
+              color={DS.textSecondary}
             />
 
             <Text style={styles.batchText}>{formatDate(item.lastAllocatedAt)}</Text>
           </View>
+
+          {item.isCarryForward && item.pending > 0 ? (
+            <View style={styles.carryForwardPill}>
+              <Ionicons name="repeat-outline" size={13} color={DS.orangeText} />
+              <Text style={styles.carryForwardPillText}>Carried forward</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.unitsBox}>
@@ -645,8 +708,8 @@ function AllocatedCard({ item }: { item: AllocatedCylinderItem }) {
 
         <Ionicons
           name="chevron-forward"
-          size={34}
-          color={COLORS.textSecondary}
+          size={22}
+          color={DS.textSecondary}
         />
       </View>
 
@@ -659,24 +722,24 @@ function AllocatedCard({ item }: { item: AllocatedCylinderItem }) {
           icon="cube-outline"
           label="TOTAL"
           value={item.totalAllocated}
-          color={COLORS.primary}
-          bg="#FBFBFC"
+          color={DS.primary}
+          bg={DS.surface}
         />
 
         <MiniStat
           icon="checkmark-circle-outline"
           label="DELIVERED"
           value={item.delivered}
-          color={COLORS.green}
-          bg={COLORS.greenSoft}
+          color={PALETTE.green600}
+          bg={DS.greenSoft}
         />
 
         <MiniStat
           icon="time-outline"
           label="PENDING"
           value={item.pending}
-          color={COLORS.orange}
-          bg={COLORS.orangeSoft}
+          color={DS.orangeText}
+          bg={DS.orangeSoft}
         />
       </View>
     </View>
@@ -698,7 +761,7 @@ function MiniStat({
 }) {
   return (
     <View style={[styles.miniStat, { backgroundColor: bg }]}>
-      <Ionicons name={icon} size={26} color={color} />
+      <Ionicons name={icon} size={18} color={color} />
 
       <View>
         <Text style={styles.miniLabel}>{label}</Text>
@@ -764,15 +827,15 @@ function BatchCounterModal({
         <View style={styles.modalSheet}>
           <View style={styles.modalHeader}>
             <View style={styles.modalTitleRow}>
-              <Ionicons name={icon} size={30} color={iconColor} />
+              <Ionicons name={icon} size={24} color={iconColor} />
               <Text style={styles.modalTitle}>{title}</Text>
             </View>
 
             <TouchableOpacity onPress={onClose}>
               <Ionicons
                 name="close-outline"
-                size={34}
-                color={COLORS.textSecondary}
+                size={26}
+                color={DS.textSecondary}
               />
             </TouchableOpacity>
           </View>
@@ -785,8 +848,8 @@ function BatchCounterModal({
                 <View style={styles.counterLeft}>
                   <Ionicons
                     name="bag-handle-outline"
-                    size={30}
-                    color={COLORS.textSecondary}
+                    size={22}
+                    color={DS.textSecondary}
                   />
 
                   <View>
@@ -827,14 +890,14 @@ function BatchCounterModal({
             style={[
               styles.modalSubmitButton,
               {
-                backgroundColor: totalSelected > 0 ? buttonColor : '#AFC8F7',
+                backgroundColor: totalSelected > 0 ? buttonColor : PALETTE.primary200,
               },
             ]}
             disabled={submitting || totalSelected <= 0}
             onPress={onSubmit}
           >
             {submitting ? (
-              <ActivityIndicator color={COLORS.white} />
+              <ActivityIndicator color={DS.white} />
             ) : (
               <Text style={styles.modalSubmitText}>{buttonText}</Text>
             )}
@@ -867,24 +930,21 @@ const styles = StyleSheet.create({
   },
 
   pageTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
-    letterSpacing: -0.6,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
   pageSubTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 3,
   },
 
   card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 22,
+    backgroundColor: DS.card,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     padding: 16,
     marginBottom: 18,
   },
@@ -895,10 +955,10 @@ const styles = StyleSheet.create({
   },
 
   iconBox: {
-    width: 86,
-    height: 86,
-    borderRadius: 24,
-    backgroundColor: COLORS.blueSoft,
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -915,29 +975,26 @@ const styles = StyleSheet.create({
   },
 
   productName: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
     flexShrink: 1,
   },
 
   typePill: {
-    backgroundColor: '#F1F1F2',
-    borderRadius: 12,
+    backgroundColor: DS.grey100,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
 
   typePillText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.c2,
+    color: DS.textSecondary,
   },
 
   productSize: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b2,
+    color: DS.textSecondary,
     marginTop: 7,
   },
 
@@ -948,10 +1005,26 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
+  carryForwardPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.pill,
+    backgroundColor: DS.orangeSoft,
+  },
+
+  carryForwardPillText: {
+    ...TYPO.c2,
+    color: DS.orangeText,
+  },
+
   batchText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
 
   unitsBox: {
@@ -960,30 +1033,28 @@ const styles = StyleSheet.create({
   },
 
   unitsValue: {
-    fontSize: 42,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h3,
+    color: DS.textPrimary,
   },
 
   unitsLabel: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.c2,
+    color: DS.textSecondary,
     marginTop: -4,
   },
 
   progressTrack: {
     height: 10,
-    backgroundColor: '#F1F1F1',
-    borderRadius: 99,
+    backgroundColor: DS.grey100,
+    borderRadius: RADIUS.pill,
     overflow: 'hidden',
     marginTop: 22,
   },
 
   progressFill: {
     height: '100%',
-    backgroundColor: COLORS.green,
-    borderRadius: 99,
+    backgroundColor: DS.green,
+    borderRadius: RADIUS.pill,
   },
 
   statsRow: {
@@ -994,7 +1065,7 @@ const styles = StyleSheet.create({
 
   miniStat: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
     paddingVertical: 13,
     paddingHorizontal: 12,
     flexDirection: 'row',
@@ -1003,14 +1074,17 @@ const styles = StyleSheet.create({
   },
 
   miniLabel: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    fontSize: 8,
+    lineHeight: 10,
+    letterSpacing: 0.2,
+    color: DS.textSecondary,
   },
 
   miniValue: {
-    fontSize: 20,
-    fontWeight: '900',
+    ...TYPO.c2,
+    fontSize: 8,
+    lineHeight: 12,
     marginTop: 1,
   },
 
@@ -1021,16 +1095,15 @@ const styles = StyleSheet.create({
   },
 
   detailTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
   detailMainCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 22,
     marginBottom: 26,
   },
@@ -1041,10 +1114,10 @@ const styles = StyleSheet.create({
   },
 
   detailIconBox: {
-    width: 94,
-    height: 94,
-    borderRadius: 18,
-    backgroundColor: COLORS.blueSoft,
+    width: 68,
+    height: 68,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 18,
@@ -1055,15 +1128,13 @@ const styles = StyleSheet.create({
   },
 
   detailUnits: {
-    fontSize: 36,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h3,
+    color: DS.textPrimary,
   },
 
   detailSubText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b2,
+    color: DS.textSecondary,
     marginTop: 4,
   },
 
@@ -1075,9 +1146,8 @@ const styles = StyleSheet.create({
   },
 
   metaText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
 
   detailStatsRow: {
@@ -1088,20 +1158,18 @@ const styles = StyleSheet.create({
 
   detailStatCard: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: RADIUS.md,
     paddingVertical: 16,
     alignItems: 'center',
   },
 
   detailStatLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textSecondary,
   },
 
   detailStatValue: {
-    fontSize: 24,
-    fontWeight: '900',
+    ...TYPO.h5,
     marginTop: 4,
   },
 
@@ -1114,58 +1182,55 @@ const styles = StyleSheet.create({
   smallStatCard: {
     flex: 1,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
   },
 
   smallStatIconBlue: {
-    width: 68,
-    height: 68,
-    borderRadius: 16,
+    width: 54,
+    height: 54,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.blueSoft,
+    backgroundColor: DS.primarySoft,
   },
 
   smallStatIconOrange: {
-    width: 68,
-    height: 68,
-    borderRadius: 16,
+    width: 54,
+    height: 54,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.orangeSoft,
+    backgroundColor: DS.orangeSoft,
   },
 
   smallStatLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textSecondary,
   },
 
   smallStatValue: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textSecondary,
     marginBottom: 14,
   },
 
   weightList: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     overflow: 'hidden',
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     marginBottom: 34,
   },
 
@@ -1183,9 +1248,8 @@ const styles = StyleSheet.create({
   },
 
   weightText: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   weightRight: {
@@ -1195,59 +1259,57 @@ const styles = StyleSheet.create({
   },
 
   typeBadge: {
-    backgroundColor: '#F1F1F2',
+    backgroundColor: DS.grey100,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 14,
+    borderRadius: RADIUS.sm,
   },
 
   typeBadgeText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.c2,
+    color: DS.textSecondary,
   },
 
   weightQty: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   returnOutlineButton: {
-    height: 74,
+    minHeight: 56,
     borderWidth: 1,
-    borderColor: '#8DB7FF',
-    borderRadius: 18,
-    backgroundColor: '#F4F8FF',
+    borderColor: DS.primarySoftBorder,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.primarySoft,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 14,
+    paddingVertical: 12,
     marginBottom: 14,
   },
 
   returnOutlineText: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.primary,
+    ...TYPO.s1,
+    color: DS.primary,
   },
 
   defectiveOutlineButton: {
-    height: 74,
+    minHeight: 56,
     borderWidth: 1,
-    borderColor: '#F5B6B6',
-    borderRadius: 18,
-    backgroundColor: '#FFF7F7',
+    borderColor: PALETTE.red100,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.redSoft,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 14,
+    paddingVertical: 12,
   },
 
   defectiveOutlineText: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#E05252',
+    ...TYPO.s1,
+    color: DS.red,
   },
 
   modalOverlay: {
@@ -1261,9 +1323,9 @@ const styles = StyleSheet.create({
   },
 
   modalSheet: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: DS.card,
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
     paddingHorizontal: 18,
     paddingTop: 26,
     paddingBottom: 22,
@@ -1282,16 +1344,13 @@ const styles = StyleSheet.create({
   },
 
   modalTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
   modalSubtitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    lineHeight: 24,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 16,
     marginBottom: 28,
   },
@@ -1302,8 +1361,8 @@ const styles = StyleSheet.create({
 
   counterRow: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1318,15 +1377,13 @@ const styles = StyleSheet.create({
   },
 
   counterName: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   counterMeta: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    color: DS.textSecondary,
     marginTop: 2,
   },
 
@@ -1337,32 +1394,30 @@ const styles = StyleSheet.create({
   },
 
   counterButton: {
-    width: 62,
-    height: 62,
-    borderRadius: 18,
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   counterButtonText: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.h4,
+    color: DS.textPrimary,
   },
 
   counterValue: {
+    ...TYPO.h5,
     minWidth: 30,
     textAlign: 'center',
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    color: DS.textPrimary,
   },
 
   totalSelectedRow: {
     borderTopWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     marginHorizontal: -18,
     marginTop: 28,
     paddingHorizontal: 18,
@@ -1372,29 +1427,27 @@ const styles = StyleSheet.create({
   },
 
   totalSelectedText: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.s1,
+    color: DS.textSecondary,
   },
 
   totalSelectedValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
   modalSubmitButton: {
-    height: 72,
-    borderRadius: 18,
+    minHeight: 56,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 12,
     marginTop: 20,
   },
 
   modalSubmitText: {
-    color: COLORS.white,
-    fontSize: 24,
-    fontWeight: '900',
+    ...TYPO.s1,
+    color: DS.white,
   },
 
   centerBox: {
@@ -1403,43 +1456,40 @@ const styles = StyleSheet.create({
   },
 
   infoText: {
+    ...TYPO.b3,
     marginTop: 12,
-    fontSize: 15,
-    color: COLORS.textSecondary,
-    fontWeight: '700',
+    color: DS.textSecondary,
   },
 
   errorText: {
-    fontSize: 15,
-    color: '#DC2626',
-    fontWeight: '700',
+    ...TYPO.b3,
+    color: DS.red,
   },
 
   retryButton: {
     marginTop: 12,
-    backgroundColor: COLORS.primary,
+    backgroundColor: DS.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
   },
 
   retryButtonText: {
-    color: COLORS.white,
-    fontWeight: '800',
+    ...TYPO.b4,
+    color: DS.white,
   },
 
   emptyBox: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     paddingVertical: 30,
     alignItems: 'center',
   },
 
   emptyText: {
-    color: COLORS.textSecondary,
-    fontSize: 15,
-    fontWeight: '700',
+    ...TYPO.b3,
+    color: DS.textSecondary,
   },
 });

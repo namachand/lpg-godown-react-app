@@ -1,7 +1,7 @@
 // src/screens/AddDeliveryScreen.tsx
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,10 +16,9 @@ import {
 
 import AppHeader from "../components/common/AppHeader";
 import ScreenContainer from "../components/common/ScreenContainer";
-import { COLORS } from "../constants/colors";
+import { AUTH_USER_KEY } from "../constants/auth";
+import { DS, TYPO, EYEBROW, RADIUS, PALETTE } from '../constants/designSystem';
 import api from "../services/api";
-
-const DRIVER_ID = 2;
 
 type Customer = {
   id: number;
@@ -42,7 +41,7 @@ type BookingItem = ProductItem & {
 };
 
 export default function AddDeliveryScreen() {
-  const router = useRouter();
+  const [driverId, setDriverId] = useState<number | null>(null);
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
@@ -64,7 +63,22 @@ export default function AddDeliveryScreen() {
 
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
 
-  const findCustomer = async () => {
+  useEffect(() => {
+    const loadDriverId = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(AUTH_USER_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        const id = Number(parsed?.id);
+        setDriverId(Number.isNaN(id) ? null : id);
+      } catch {
+        setDriverId(null);
+      }
+    };
+
+    loadDriverId();
+  }, []);
+
+  const findCustomer = useCallback(async () => {
     const cleanPhone = phone.trim();
 
     if (!cleanPhone || cleanPhone.length < 10) {
@@ -109,7 +123,7 @@ export default function AddDeliveryScreen() {
     } finally {
       setCheckingCustomer(false);
     }
-  };
+  }, [phone]);
 
   useEffect(() => {
     if (phone.trim().length === 10) {
@@ -118,7 +132,7 @@ export default function AddDeliveryScreen() {
       setCustomerExists(false);
       setSelectedCustomer(null);
     }
-  }, [phone]);
+  }, [phone, findCustomer]);
 
   const continueFromStepOne = async () => {
     if (!phone.trim() || phone.trim().length < 10) {
@@ -239,6 +253,11 @@ export default function AddDeliveryScreen() {
   const canConfirmBooking = selectedCustomer && selectedItems.length > 0;
 
   const confirmBooking = async () => {
+    if (!driverId) {
+      Alert.alert("Error", "Unable to identify driver session");
+      return;
+    }
+
     if (!selectedCustomer) {
       Alert.alert("Required", "Customer is required");
       return;
@@ -258,7 +277,7 @@ export default function AddDeliveryScreen() {
       setCreatingBooking(true);
 
       const response = await api.post("/drivers/bookings", {
-        driver_id: DRIVER_ID,
+        driver_id: driverId,
         customer_id: selectedCustomer.id,
         address_id: selectedCustomer.addressId,
         items: selectedItems.map((item) => ({
@@ -317,7 +336,7 @@ export default function AddDeliveryScreen() {
                 <Ionicons
                   name="call-outline"
                   size={26}
-                  color={COLORS.textPrimary}
+                  color={DS.textPrimary}
                 />
                 <Text style={styles.label}>Customer Phone Number</Text>
               </View>
@@ -328,7 +347,7 @@ export default function AddDeliveryScreen() {
                 onChangeText={setPhone}
                 keyboardType="phone-pad"
                 placeholder="10-digit number"
-                placeholderTextColor={COLORS.textSecondary}
+                placeholderTextColor={DS.textSecondary}
                 maxLength={10}
               />
 
@@ -343,7 +362,7 @@ export default function AddDeliveryScreen() {
                 <Ionicons
                   name={customerExists ? "person-add-outline" : "person-add-outline"}
                   size={28}
-                  color={customerExists ? COLORS.green : COLORS.primary}
+                  color={customerExists ? DS.green : DS.primary}
                 />
 
                 <View style={{ flex: 1 }}>
@@ -366,7 +385,7 @@ export default function AddDeliveryScreen() {
               disabled={checkingCustomer}
             >
               {checkingCustomer ? (
-                <ActivityIndicator color={COLORS.white} />
+                <ActivityIndicator color={DS.white} />
               ) : (
                 <Text style={styles.primaryButtonText}>Continue</Text>
               )}
@@ -384,7 +403,7 @@ export default function AddDeliveryScreen() {
                 <Ionicons
                   name="arrow-back"
                   size={28}
-                  color={COLORS.textPrimary}
+                  color={DS.textPrimary}
                 />
               </TouchableOpacity>
 
@@ -400,7 +419,7 @@ export default function AddDeliveryScreen() {
               value={name}
               onChangeText={setName}
               placeholder="Enter name"
-              placeholderTextColor={COLORS.textSecondary}
+              placeholderTextColor={DS.textSecondary}
             />
 
             <Text style={styles.inputLabel}>Address *</Text>
@@ -409,7 +428,7 @@ export default function AddDeliveryScreen() {
               value={address}
               onChangeText={setAddress}
               placeholder="Delivery address"
-              placeholderTextColor={COLORS.textSecondary}
+              placeholderTextColor={DS.textSecondary}
             />
 
             <Text style={styles.inputLabel}>Geo-Location Tag</Text>
@@ -420,7 +439,7 @@ export default function AddDeliveryScreen() {
               <Ionicons
                 name="location-outline"
                 size={28}
-                color={COLORS.textPrimary}
+                color={DS.textPrimary}
               />
               <Text style={styles.locationButtonText}>
                 {geoLocationTag || "Tag Current Location"}
@@ -436,7 +455,7 @@ export default function AddDeliveryScreen() {
               onPress={createCustomerAndContinue}
             >
               {creatingCustomer ? (
-                <ActivityIndicator color={COLORS.white} />
+                <ActivityIndicator color={DS.white} />
               ) : (
                 <Text style={styles.primaryButtonText}>Continue</Text>
               )}
@@ -460,7 +479,7 @@ export default function AddDeliveryScreen() {
                 <Ionicons
                   name="arrow-back"
                   size={28}
-                  color={COLORS.textPrimary}
+                  color={DS.textPrimary}
                 />
               </TouchableOpacity>
 
@@ -482,7 +501,7 @@ export default function AddDeliveryScreen() {
 
             {productLoading ? (
               <View style={styles.loadingBox}>
-                <ActivityIndicator color={COLORS.primary} />
+                <ActivityIndicator color={DS.primary} />
                 <Text style={styles.loadingText}>Loading products...</Text>
               </View>
             ) : (
@@ -530,7 +549,7 @@ export default function AddDeliveryScreen() {
               onPress={confirmBooking}
             >
               {creatingBooking ? (
-                <ActivityIndicator color={COLORS.white} />
+                <ActivityIndicator color={DS.white} />
               ) : (
                 <Text style={styles.confirmButtonText}>✓ Confirm Booking</Text>
               )}
@@ -578,25 +597,23 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.h4,
+    color: DS.textPrimary,
   },
 
   stepText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.textSecondary,
+    ...TYPO.b2,
+    color: DS.textSecondary,
     marginTop: 4,
     marginBottom: 28,
   },
 
   phoneCard: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
-    padding: 22,
-    backgroundColor: COLORS.white,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
+    padding: 16,
+    backgroundColor: DS.card,
     marginBottom: 28,
   },
 
@@ -608,72 +625,67 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   phoneInput: {
     borderWidth: 2,
-    borderColor: COLORS.primary,
-    borderRadius: 18,
-    paddingHorizontal: 22,
-    height: 92,
-    fontSize: 30,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
+    borderColor: DS.primary,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 16,
+    height: 56,
+    ...TYPO.h5,
+    color: DS.textPrimary,
     marginBottom: 18,
   },
 
   customerFoundBox: {
     minHeight: 72,
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
   },
 
   customerFoundBoxBlue: {
-    backgroundColor: COLORS.blueSoft,
-    borderColor: "#AFC8F7",
+    backgroundColor: DS.primarySoft,
+    borderColor: DS.primarySoftBorder,
   },
 
   customerFoundBoxGreen: {
-    backgroundColor: COLORS.greenSoft,
-    borderColor: "#B7E0C1",
+    backgroundColor: DS.greenSoft,
+    borderColor: PALETTE.green100,
   },
 
   customerFoundTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   customerFoundSub: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    fontWeight: "700",
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 4,
   },
 
   primaryButton: {
-    height: 86,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary,
+    height: 52,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.primary,
     alignItems: "center",
     justifyContent: "center",
   },
 
   primaryButtonText: {
-    color: COLORS.white,
-    fontSize: 26,
-    fontWeight: "900",
+    ...TYPO.s2,
+    color: DS.white,
   },
 
   disabledButton: {
-    backgroundColor: "#8FB3F4",
+    backgroundColor: PALETTE.primary200,
   },
 
   headerRow: {
@@ -684,88 +696,81 @@ const styles = StyleSheet.create({
   },
 
   backSquare: {
-    width: 70,
-    height: 70,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
   },
 
   inputLabel: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginBottom: 10,
   },
 
   input: {
-    height: 86,
+    height: 56,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
-    paddingHorizontal: 22,
-    fontSize: 24,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-    backgroundColor: COLORS.white,
-    marginBottom: 24,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 16,
+    ...TYPO.b2,
+    color: DS.textPrimary,
+    backgroundColor: DS.surface,
+    marginBottom: 20,
   },
 
   locationButton: {
-    height: 86,
-    borderRadius: 18,
+    height: 52,
+    borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
+    borderColor: DS.border,
+    backgroundColor: DS.card,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 14,
-    marginBottom: 24,
+    marginBottom: 20,
   },
 
   locationButtonText: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
 
   bookingForCard: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
-    padding: 22,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.card,
+    padding: 16,
     marginBottom: 30,
   },
 
   bookingForLabel: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textTertiary,
   },
 
   bookingName: {
-    fontSize: 26,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
     marginTop: 4,
   },
 
   bookingSub: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 6,
   },
 
   sectionTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
     marginBottom: 14,
   },
 
@@ -775,17 +780,17 @@ const styles = StyleSheet.create({
   },
 
   loadingText: {
+    ...TYPO.b4,
     marginTop: 10,
-    color: COLORS.textSecondary,
-    fontWeight: "700",
+    color: DS.textSecondary,
   },
 
   productCard: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
-    padding: 22,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.card,
+    padding: 16,
     marginBottom: 14,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -793,15 +798,13 @@ const styles = StyleSheet.create({
   },
 
   productName: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   productPrice: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 6,
   },
 
@@ -812,127 +815,117 @@ const styles = StyleSheet.create({
   },
 
   qtyButton: {
-    width: 72,
-    height: 72,
+    width: 44,
+    height: 44,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
   },
 
   qtyButtonText: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   qtyText: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
     minWidth: 30,
     textAlign: "center",
   },
 
   totalBox: {
     borderWidth: 1,
-    borderColor: "#AFC8F7",
-    borderRadius: 18,
-    backgroundColor: "#F3F7FF",
-    padding: 24,
+    borderColor: DS.primarySoftBorder,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.primarySoft,
+    padding: 20,
     marginTop: 16,
     marginBottom: 28,
   },
 
   totalLabel: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.textSecondary,
+    ...TYPO.b2,
+    color: DS.textSecondary,
   },
 
   totalAmount: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.h3,
+    color: DS.textPrimary,
     marginTop: 8,
   },
 
   confirmButton: {
-    height: 88,
-    borderRadius: 20,
-    backgroundColor: COLORS.buttonGreen,
+    height: 52,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.buttonGreen,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 60,
+    marginBottom: 40,
   },
 
   disabledGreenButton: {
-    backgroundColor: "#9AD6AB",
+    backgroundColor: PALETTE.green100,
   },
 
   confirmButtonText: {
-    fontSize: 26,
-    fontWeight: "900",
-    color: COLORS.white,
+    ...TYPO.s2,
+    color: DS.white,
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(11,13,18,0.55)",
     justifyContent: "center",
   },
 
   cancelBox: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     padding: 28,
   },
 
   cancelTitle: {
-    fontSize: 26,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
     textAlign: "center",
   },
 
   cancelText: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
+    ...TYPO.b1,
+    color: DS.textSecondary,
     textAlign: "center",
-    lineHeight: 30,
     marginTop: 22,
     marginBottom: 32,
   },
 
   cancelConfirmButton: {
-    height: 86,
-    backgroundColor: "#E05252",
-    borderRadius: 18,
+    height: 56,
+    backgroundColor: DS.red,
+    borderRadius: RADIUS.lg,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
   },
 
   cancelConfirmText: {
-    color: COLORS.white,
-    fontSize: 22,
-    fontWeight: "900",
+    ...TYPO.s2,
+    color: DS.white,
   },
 
   keepButton: {
-    height: 86,
+    height: 56,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     alignItems: "center",
     justifyContent: "center",
   },
 
   keepButtonText: {
-    color: COLORS.textPrimary,
-    fontSize: 22,
-    fontWeight: "900",
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
 });

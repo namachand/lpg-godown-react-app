@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   DeviceEventEmitter,
@@ -14,7 +14,8 @@ import {
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, EYEBROW, RADIUS, PALETTE, WEIGHT } from '../../constants/designSystem';
+import { useDateRange } from '../../context/DateRangeContext';
 import {
   cancelStockOutLoad,
   getStockOutLoadDetail,
@@ -22,12 +23,13 @@ import {
 
 export default function GodownLoadOutDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { rangeKey } = useDateRange();
 
   const [loadData, setLoadData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
 
-  const fetchLoadDetail = async () => {
+  const fetchLoadDetail = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getStockOutLoadDetail(id);
@@ -37,11 +39,11 @@ export default function GodownLoadOutDetailScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     fetchLoadDetail();
-  }, [id]);
+  }, [fetchLoadDetail, rangeKey]);
 
   const handleCancel = async () => {
     try {
@@ -65,7 +67,7 @@ export default function GodownLoadOutDetailScreen() {
       <ScreenContainer>
         <AppHeader />
         <View style={styles.loaderBox}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color={DS.primary} />
         </View>
       </ScreenContainer>
     );
@@ -98,7 +100,7 @@ export default function GodownLoadOutDetailScreen() {
       >
         <View style={styles.pageHeader}>
           <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={23} color={COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={23} color={DS.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.titleBox}>
@@ -122,7 +124,7 @@ export default function GodownLoadOutDetailScreen() {
           <Text style={styles.sectionTitle}>ITEM-WISE STOCK</Text>
 
           <TouchableOpacity style={styles.editPill}>
-            <Ionicons name="pencil-outline" size={14} color={COLORS.textPrimary} />
+            <Ionicons name="pencil-outline" size={14} color={DS.textPrimary} />
             <Text style={styles.editText}>EDIT</Text>
           </TouchableOpacity>
         </View>
@@ -151,7 +153,7 @@ export default function GodownLoadOutDetailScreen() {
           <>
             <View style={styles.defectiveTopHeader}>
               <View style={styles.defectiveTitleLeft}>
-                <Ionicons name="warning-outline" size={15} color="#EF4444" />
+                <Ionicons name="warning-outline" size={15} color={DS.red} />
                 <Text style={styles.defectiveTopTitle}>DEFECTIVE ITEMS</Text>
               </View>
 
@@ -186,7 +188,7 @@ export default function GodownLoadOutDetailScreen() {
         <View style={styles.invoiceCard}>
           <View style={styles.invoiceRow}>
             <View style={styles.invoiceLeft}>
-              <Ionicons name="document-text-outline" size={16} color={COLORS.textSecondary} />
+              <Ionicons name="document-text-outline" size={16} color={DS.textSecondary} />
               <Text style={styles.invoiceLabel}>Invoice No.</Text>
             </View>
 
@@ -195,7 +197,7 @@ export default function GodownLoadOutDetailScreen() {
 
           <View style={styles.invoiceRow}>
             <View style={styles.invoiceLeft}>
-              <Ionicons name="calendar-outline" size={16} color={COLORS.textSecondary} />
+              <Ionicons name="calendar-outline" size={16} color={DS.textSecondary} />
               <Text style={styles.invoiceLabel}>Invoice Date</Text>
             </View>
 
@@ -207,7 +209,7 @@ export default function GodownLoadOutDetailScreen() {
           <Text style={styles.sectionTitleSmall}>INVOICE PHOTO</Text>
 
           <TouchableOpacity style={styles.downloadPill}>
-            <Ionicons name="download-outline" size={14} color={COLORS.textPrimary} />
+            <Ionicons name="download-outline" size={14} color={DS.textPrimary} />
             <Text style={styles.downloadText}>DOWNLOAD</Text>
           </TouchableOpacity>
         </View>
@@ -242,7 +244,7 @@ function InfoRow({ icon, label, value }: any) {
   return (
     <View style={styles.infoRow}>
       <View style={styles.infoIcon}>
-        <Ionicons name={icon} size={23} color={COLORS.primary} />
+        <Ionicons name={icon} size={23} color={DS.primary} />
       </View>
 
       <View>
@@ -290,34 +292,31 @@ const styles = StyleSheet.create({
     marginLeft: 18,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
   date: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 2,
   },
   totalBox: {
     alignItems: 'flex-end',
   },
   totalValue: {
-    fontSize: 25,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
   totalLabel: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
-    letterSpacing: 0.8,
+    ...TYPO.c3,
+    color: DS.textSecondary,
+    letterSpacing: 0.6,
   },
   infoCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 14,
     marginBottom: 18,
   },
@@ -329,22 +328,21 @@ const styles = StyleSheet.create({
   infoIcon: {
     width: 36,
     height: 36,
-    borderRadius: 11,
-    backgroundColor: COLORS.blueSoft,
+    borderRadius: RADIUS.md,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   infoLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...TYPO.c3,
+    color: DS.textSecondary,
     letterSpacing: 0.6,
   },
   infoValue: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
     marginTop: 1,
   },
   sectionHeader: {
@@ -353,15 +351,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sectionTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textSecondary,
     letterSpacing: 0.8,
   },
   sectionTitleSmall: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textSecondary,
     letterSpacing: 0.8,
     marginBottom: 8,
     marginTop: 18,
@@ -370,76 +366,71 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
   editText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.c2,
+    color: DS.textPrimary,
   },
   tableCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     overflow: 'hidden',
     marginTop: 8,
   },
   tableHead: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: DS.surface,
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DS.border,
   },
   tableHeadText: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...TYPO.c3,
+    color: DS.textSecondary,
   },
   stockRow: {
     minHeight: 48,
     paddingHorizontal: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: DS.divider,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   stockLabel: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    color: DS.textPrimary,
     flex: 1,
   },
   stockValue: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginLeft: 12,
   },
   totalRow: {
     minHeight: 52,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: DS.surface,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   totalRowText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
   totalRowValue: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.primary,
+    ...TYPO.s1,
+    color: DS.primary,
   },
   defectiveTopHeader: {
     marginTop: 18,
@@ -454,73 +445,70 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   defectiveTopTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textSecondary,
     letterSpacing: 0.8,
   },
   defectiveTopTotal: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#EF4444',
+    ...TYPO.c2,
+    fontWeight: WEIGHT.semibold,
+    color: DS.red,
   },
   defectiveTableCard: {
-    backgroundColor: '#FFF7F7',
+    backgroundColor: DS.redSoft,
     borderWidth: 1,
-    borderColor: '#FCA5A5',
-    borderRadius: 12,
+    borderColor: PALETTE.red100,
+    borderRadius: RADIUS.md,
     overflow: 'hidden',
   },
   defectiveTableHead: {
-    backgroundColor: '#FFF7F7',
+    backgroundColor: DS.redSoft,
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#FECACA',
+    borderBottomColor: PALETTE.red100,
   },
   defectiveHeadText: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: '#EF4444',
-    letterSpacing: 0.7,
+    ...TYPO.c3,
+    color: DS.red,
+    letterSpacing: 0.6,
   },
   defectiveStockRow: {
-    backgroundColor: '#FFF7F7',
-    borderBottomColor: '#FECACA',
+    backgroundColor: DS.redSoft,
+    borderBottomColor: PALETTE.red100,
   },
   defectiveStockLabel: {
-    color: COLORS.textPrimary,
+    color: DS.textPrimary,
   },
   defectiveStockValue: {
-    color: '#EF4444',
+    color: DS.red,
   },
   defectiveTotalRow: {
     minHeight: 52,
-    backgroundColor: '#FFF7F7',
+    backgroundColor: DS.redSoft,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: PALETTE.red100,
   },
   defectiveTotalText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
   defectiveTotalValue: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#EF4444',
+    ...TYPO.s1,
+    color: DS.red,
   },
   invoiceCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     padding: 14,
     gap: 12,
   },
@@ -535,13 +523,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   invoiceLabel: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
   },
   invoiceValue: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
   photoHeader: {
     flexDirection: 'row',
@@ -552,19 +540,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
   downloadText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.c2,
+    color: DS.textPrimary,
   },
   invoiceImage: {
     height: 190,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
     marginTop: 8,
   },
   bottomAction: {
@@ -573,23 +560,22 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 72,
     padding: 16,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: DS.surface,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: DS.border,
   },
   cancelButton: {
-    height: 58,
-    backgroundColor: '#EF4444',
-    borderRadius: 14,
+    height: 52,
+    backgroundColor: DS.red,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelledButtonDisabled: {
-    backgroundColor: '#CBD5E1',
+    backgroundColor: DS.disabledBg,
   },
   cancelButtonText: {
-    color: COLORS.white,
-    fontSize: 17,
-    fontWeight: '900',
+    ...TYPO.s2,
+    color: DS.white,
   },
 });

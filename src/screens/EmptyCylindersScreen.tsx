@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Modal,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,10 +17,10 @@ import {
 
 import AppHeader from '../components/common/AppHeader';
 import ScreenContainer from '../components/common/ScreenContainer';
-import { COLORS } from '../constants/colors';
+import { AUTH_USER_KEY } from '../constants/auth';
+import { DS, TYPO, RADIUS, PALETTE, WEIGHT } from '../constants/designSystem';
+import { useDateRange } from '../context/DateRangeContext';
 import api from '../services/api';
-
-const DRIVER_ID = 2;
 
 type Product = {
   id: number;
@@ -27,6 +28,9 @@ type Product = {
   type?: string;
   price?: number;
   categoryName?: string;
+  availableQty?: number;
+  collectedQty?: number;
+  returnedQty?: number;
 };
 
 type TodayData = {
@@ -107,6 +111,8 @@ const formatDateLabel = (dateString: string) => {
 
 export default function EmptyCylindersScreen() {
   const router = useRouter();
+  const { rangeKey } = useDateRange();
+  const [driverId, setDriverId] = useState<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<'today' | 'history'>('today');
   const [todayData, setTodayData] = useState<TodayData | null>(null);
@@ -120,35 +126,59 @@ export default function EmptyCylindersScreen() {
   const [returnModalVisible, setReturnModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [productSearch, setProductSearch] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState('');
 
+  useEffect(() => {
+    const loadDriverId = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(AUTH_USER_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        const id = Number(parsed?.id);
+        setDriverId(Number.isNaN(id) ? null : id);
+      } catch {
+        setDriverId(null);
+      }
+    };
+
+    loadDriverId();
+  }, []);
+
   const fetchTodayData = useCallback(async () => {
-    const response = await api.get(`/drivers/${DRIVER_ID}/empty-cylinders/today`);
+    if (!driverId) return;
+
+    const response = await api.get(`/drivers/${driverId}/empty-cylinders/today`);
 
     if (response.data?.success) {
       setTodayData(response.data.data);
     } else {
       throw new Error('Failed to load empty cylinders today');
     }
-  }, []);
+  }, [driverId]);
 
   const fetchHistoryData = useCallback(async () => {
-    const response = await api.get(`/drivers/${DRIVER_ID}/empty-cylinders/history`);
+    if (!driverId) return;
+
+    const response = await api.get(`/drivers/${driverId}/empty-cylinders/history`);
 
     if (response.data?.success) {
       setHistoryData(response.data.data);
     } else {
       throw new Error('Failed to load empty cylinders history');
     }
-  }, []);
+  }, [driverId]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
+
+      if (!driverId) {
+        setError('Unable to identify driver session');
+        return;
+      }
 
       if (activeTab === 'today') {
         await fetchTodayData();
@@ -161,11 +191,11 @@ export default function EmptyCylindersScreen() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, fetchTodayData, fetchHistoryData]);
+  }, [activeTab, fetchTodayData, fetchHistoryData, driverId]);
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, rangeKey]);
 
   const onRefresh = async () => {
     try {
@@ -184,32 +214,39 @@ export default function EmptyCylindersScreen() {
   };
 
   const resetModal = () => {
-    setProductSearch('');
     setProducts([]);
     setSelectedProduct(null);
     setQuantity('');
   };
 
-  const searchProducts = async (text: string) => {
-    setProductSearch(text);
-    setSelectedProduct(null);
-
-    if (!text.trim()) {
+  const fetchReturnableProducts = useCallback(async () => {
+    if (!driverId) {
       setProducts([]);
       return;
     }
 
     try {
+      setLoadingProducts(true);
+
       const response = await api.get(
-        `/drivers/products/search?search=${encodeURIComponent(text)}`
+        `/drivers/${driverId}/empty-cylinders/returnable-products`
       );
 
       if (response.data?.success) {
         setProducts(response.data.data || []);
       }
     } catch (err: any) {
-      console.log('searchProducts error:', err?.response?.data || err.message);
+      console.log('fetchReturnableProducts error:', err?.response?.data || err.message);
+    } finally {
+      setLoadingProducts(false);
     }
+  }, [driverId]);
+
+  const openReturnModal = () => {
+    setSelectedProduct(null);
+    setQuantity('');
+    setReturnModalVisible(true);
+    fetchReturnableProducts();
   };
 
   const submitReturnRequest = async () => {
@@ -224,19 +261,37 @@ export default function EmptyCylindersScreen() {
         return;
       }
 
+      if (!driverId) {
+        Alert.alert('Error', 'Unable to identify driver session');
+        return;
+      }
+
+      const requestedQty = Number(quantity);
+      const availableQty = Number(selectedProduct.availableQty || 0);
+
+      if (requestedQty > availableQty) {
+        Alert.alert(
+          'Error',
+          `Only ${availableQty} empty cylinder(s) can be returned for selected product`
+        );
+        return;
+      }
+
       setSubmitting(true);
 
       const response = await api.post('/drivers/empty-cylinders/return-request', {
-        driver_id: DRIVER_ID,
+        driver_id: driverId,
         product_id: selectedProduct.id,
-        quantity: Number(quantity),
+        quantity: requestedQty,
       });
 
       if (response.data?.success) {
         Alert.alert('Success', 'Return request sent for approval');
-        setReturnModalVisible(false);
-        resetModal();
-        await fetchTodayData();
+        // Clear the current selection and refresh the returnable list so a
+        // fully-returned product drops off and the next one can be picked.
+        setSelectedProduct(null);
+        setQuantity('');
+        await Promise.all([fetchReturnableProducts(), fetchTodayData()]);
       } else {
         Alert.alert('Error', response.data?.message || 'Failed to create request');
       }
@@ -257,7 +312,7 @@ export default function EmptyCylindersScreen() {
       <View style={styles.content}>
         <View style={styles.titleRow}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={28} color={COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={28} color={DS.textPrimary} />
           </TouchableOpacity>
 
           <Text style={styles.pageTitle}>Empty Cylinders</Text>
@@ -268,7 +323,7 @@ export default function EmptyCylindersScreen() {
             style={[styles.segmentTab, activeTab === 'today' && styles.segmentTabActive]}
             onPress={() => setActiveTab('today')}
           >
-            <Ionicons name="time-outline" size={16} color={COLORS.textSecondary} />
+            <Ionicons name="time-outline" size={16} color={DS.textSecondary} />
             <Text
               style={[
                 styles.segmentText,
@@ -283,7 +338,7 @@ export default function EmptyCylindersScreen() {
             style={[styles.segmentTab, activeTab === 'history' && styles.segmentTabActive]}
             onPress={() => setActiveTab('history')}
           >
-            <Ionicons name="time-outline" size={16} color={COLORS.textSecondary} />
+            <Ionicons name="time-outline" size={16} color={DS.textSecondary} />
             <Text
               style={[
                 styles.segmentText,
@@ -297,7 +352,7 @@ export default function EmptyCylindersScreen() {
 
         {loading ? (
           <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <ActivityIndicator size="large" color={DS.primary} />
             <Text style={styles.infoText}>Loading...</Text>
           </View>
         ) : error ? (
@@ -307,23 +362,32 @@ export default function EmptyCylindersScreen() {
         ) : activeTab === 'today' ? (
           <>
             <View style={styles.statsRow}>
+              {(() => {
+                const emptyRemaining = Number(todayData?.summary?.inHand ?? 0);
+                const emptyOriginal = Number(todayData?.summary?.collected ?? 0);
+
+                return (
+                  <>
               <StatCard
                 value={todayData?.summary?.collected ?? 0}
                 label="Collected"
-                color={COLORS.orange}
+                color={DS.orange}
               />
 
               <StatCard
                 value={todayData?.summary?.returned ?? 0}
                 label="Returned"
-                color={COLORS.green}
+                color={DS.green}
               />
 
               <StatCard
-                value={todayData?.summary?.inHand ?? 0}
+                value={`${emptyRemaining}/${emptyOriginal}`}
                 label="In Hand"
-                color="#EF4444"
+                color={DS.red}
               />
+                  </>
+                );
+              })()}
             </View>
 
             <Text style={styles.sectionTitle}>Collected From</Text>
@@ -365,14 +429,8 @@ export default function EmptyCylindersScreen() {
               </View>
             )}
 
-            <TouchableOpacity
-              style={styles.returnButton}
-              onPress={() => {
-                resetModal();
-                setReturnModalVisible(true);
-              }}
-            >
-              <Ionicons name="refresh-outline" size={22} color={COLORS.white} />
+            <TouchableOpacity style={styles.returnButton} onPress={openReturnModal}>
+              <Ionicons name="refresh-outline" size={22} color={DS.white} />
               <Text style={styles.returnButtonText}>Return Empties to Godown</Text>
             </TouchableOpacity>
           </>
@@ -394,7 +452,7 @@ export default function EmptyCylindersScreen() {
                           <Ionicons
                             name="calendar-outline"
                             size={18}
-                            color={COLORS.orange}
+                            color={DS.orange}
                           />
                         </View>
 
@@ -415,7 +473,7 @@ export default function EmptyCylindersScreen() {
                       <Ionicons
                         name={isExpanded ? 'chevron-down' : 'chevron-forward'}
                         size={18}
-                        color={COLORS.textSecondary}
+                        color={DS.textSecondary}
                       />
                     </TouchableOpacity>
 
@@ -425,17 +483,17 @@ export default function EmptyCylindersScreen() {
                           <MiniStat
                             value={item.collected}
                             label="Collected"
-                            color={COLORS.orange}
+                            color={DS.orange}
                           />
                           <MiniStat
                             value={item.returned}
                             label="Returned"
-                            color={COLORS.green}
+                            color={DS.green}
                           />
                           <MiniStat
                             value={item.inHand}
                             label="In Hand"
-                            color={COLORS.textSecondary}
+                            color={DS.textSecondary}
                           />
                         </View>
 
@@ -507,68 +565,92 @@ export default function EmptyCylindersScreen() {
               This request will be sent to the Godown Manager for approval.
             </Text>
 
-            <Text style={styles.inputLabel}>Search Product</Text>
+            <Text style={styles.inputLabel}>Products to Return</Text>
 
-            <TextInput
-              value={productSearch}
-              onChangeText={searchProducts}
-              placeholder="Search cylinder"
-              placeholderTextColor="#94A3B8"
-              style={styles.modalInput}
-            />
-
-            {products.length > 0 && (
-              <View style={styles.productDropdown}>
-                <FlatList
-                  keyboardShouldPersistTaps="handled"
-                  data={products}
-                  keyExtractor={(item) => String(item.id)}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.productItem}
-                      onPress={() => {
-                        setSelectedProduct(item);
-                        setProductSearch(item.name);
-                        setProducts([]);
-                      }}
-                    >
-                      <Text style={styles.productName}>{item.name}</Text>
-                      {!!item.type && <Text style={styles.productType}>{item.type}</Text>}
-                    </TouchableOpacity>
-                  )}
-                />
+            {loadingProducts ? (
+              <View style={styles.modalLoaderBox}>
+                <ActivityIndicator color={DS.primary} />
               </View>
-            )}
-
-            {!!selectedProduct && (
-              <View style={styles.selectedProductBox}>
-                <Ionicons name="checkmark-circle" size={16} color={COLORS.green} />
-                <Text style={styles.selectedProductText}>{selectedProduct.name}</Text>
+            ) : products.length === 0 ? (
+              <View style={styles.modalEmptyBox}>
+                <Text style={styles.emptyText}>
+                  No empty cylinders available to return
+                </Text>
               </View>
+            ) : (
+              <ScrollView
+                style={styles.returnProductList}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {products.map((item) => {
+                  const isSelected = selectedProduct?.id === item.id;
+                  const maxQty = Number(item.availableQty || 0);
+
+                  return (
+                    <View key={item.id}>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        style={[
+                          styles.returnProductItem,
+                          isSelected && styles.returnProductItemActive,
+                        ]}
+                        onPress={() => {
+                          setSelectedProduct(item);
+                          setQuantity('');
+                        }}
+                      >
+                        <View style={styles.returnProductInfo}>
+                          <Text style={styles.productName}>{item.name}</Text>
+                          <Text style={styles.productType}>
+                            {(item.type || '').toString()}
+                            {item.categoryName ? ` · ${item.categoryName}` : ''}
+                          </Text>
+                        </View>
+
+                        <View style={styles.returnProductQtyPill}>
+                          <Text style={styles.returnProductQtyText}>{maxQty}</Text>
+                          <Text style={styles.returnProductQtyLabel}>available</Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      {isSelected && (
+                        <View style={styles.inlineQtyBox}>
+                          <Text style={styles.inputLabel}>
+                            Number of Cylinders to Return
+                          </Text>
+                          <TextInput
+                            value={quantity}
+                            onChangeText={(value) =>
+                              setQuantity(value.replace(/[^0-9]/g, ''))
+                            }
+                            placeholder={`Enter count (max ${maxQty})`}
+                            placeholderTextColor={DS.textTertiary}
+                            keyboardType="numeric"
+                            style={styles.modalInput}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
             )}
-
-            <Text style={styles.inputLabel}>Number of Cylinders</Text>
-
-            <TextInput
-              value={quantity}
-              onChangeText={(value) => setQuantity(value.replace(/[^0-9]/g, ''))}
-              placeholder="Enter count"
-              placeholderTextColor="#94A3B8"
-              keyboardType="numeric"
-              style={styles.modalInput}
-            />
 
             <TouchableOpacity
-              style={[styles.modalButton, submitting && styles.disabledButton]}
+              style={[
+                styles.modalButton,
+                (submitting || !selectedProduct || !quantity) && styles.disabledButton,
+              ]}
               activeOpacity={0.85}
               onPress={submitReturnRequest}
-              disabled={submitting}
+              disabled={submitting || !selectedProduct || !quantity}
             >
               {submitting ? (
-                <ActivityIndicator color={COLORS.white} />
+                <ActivityIndicator color={DS.white} />
               ) : (
                 <>
-                  <Ionicons name="paper-plane-outline" size={22} color={COLORS.white} />
+                  <Ionicons name="paper-plane-outline" size={22} color={DS.white} />
                   <Text style={styles.modalButtonText}>Send for Approval</Text>
                 </>
               )}
@@ -585,7 +667,7 @@ function StatCard({
   label,
   color,
 }: {
-  value: number;
+  value: number | string;
   label: string;
   color: string;
 }) {
@@ -633,7 +715,7 @@ function RequestCard({
         <Ionicons
           name={approved ? 'checkmark-circle-outline' : 'time-outline'}
           size={20}
-          color={approved ? COLORS.green : COLORS.orange}
+          color={approved ? DS.green : DS.orange}
           style={styles.requestIcon}
         />
 
@@ -676,15 +758,14 @@ const styles = StyleSheet.create({
   },
 
   pageTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
   segmentWrap: {
     flexDirection: 'row',
-    backgroundColor: '#F1F1F3',
-    borderRadius: 14,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.md,
     padding: 4,
     marginBottom: 16,
   },
@@ -692,7 +773,7 @@ const styles = StyleSheet.create({
   segmentTab: {
     flex: 1,
     height: 42,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -700,19 +781,19 @@ const styles = StyleSheet.create({
   },
 
   segmentTabActive: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
   },
 
   segmentText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textSecondary,
   },
 
   segmentTextActive: {
-    color: COLORS.textPrimary,
+    color: DS.textPrimary,
   },
 
   statsRow: {
@@ -723,39 +804,36 @@ const styles = StyleSheet.create({
 
   statCard: {
     flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
+    backgroundColor: DS.white,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     paddingVertical: 16,
     alignItems: 'center',
   },
 
   statValue: {
-    fontSize: 24,
-    fontWeight: '900',
+    ...TYPO.h5,
     marginBottom: 4,
   },
 
   statLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontWeight: '800',
+    ...TYPO.c2,
+    color: DS.textSecondary,
   },
 
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
     marginBottom: 10,
     marginTop: 4,
   },
 
   infoCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 14,
     marginBottom: 10,
     flexDirection: 'row',
@@ -764,28 +842,26 @@ const styles = StyleSheet.create({
   },
 
   infoTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
 
   infoSub: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 3,
   },
 
   qtyOrange: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.orange,
+    ...TYPO.h5,
+    color: DS.orange,
   },
 
   requestCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 14,
     marginBottom: 10,
     flexDirection: 'row',
@@ -804,55 +880,55 @@ const styles = StyleSheet.create({
   },
 
   requestTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
 
   requestProduct: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 2,
   },
 
   requestTime: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 2,
   },
 
   badge: {
-    borderRadius: 16,
+    borderRadius: RADIUS.pill,
     paddingHorizontal: 10,
     paddingVertical: 7,
     marginLeft: 8,
   },
 
   approvedBadge: {
-    backgroundColor: COLORS.greenSoft,
+    backgroundColor: DS.greenSoft,
   },
 
   pendingBadge: {
-    backgroundColor: COLORS.orangeSoft,
+    backgroundColor: DS.orangeSoft,
   },
 
   badgeText: {
-    fontSize: 11,
-    fontWeight: '900',
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
   },
 
   approvedText: {
-    color: COLORS.green,
+    color: PALETTE.green600,
   },
 
   pendingText: {
-    color: COLORS.orange,
+    color: DS.orangeText,
   },
 
   returnButton: {
     height: 60,
-    borderRadius: 14,
-    backgroundColor: '#EF4444',
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.red,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -861,16 +937,15 @@ const styles = StyleSheet.create({
   },
 
   returnButtonText: {
-    color: COLORS.white,
-    fontSize: 18,
-    fontWeight: '900',
+    ...TYPO.s2,
+    color: DS.white,
   },
 
   historyCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     marginBottom: 12,
     overflow: 'hidden',
   },
@@ -891,37 +966,36 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: COLORS.orangeSoft,
+    backgroundColor: DS.orangeSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
 
   historyDate: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
 
   historyMeta: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 3,
   },
 
   orangeText: {
-    color: COLORS.orange,
-    fontWeight: '900',
+    color: DS.orange,
+    fontWeight: WEIGHT.semibold,
   },
 
   greenText: {
-    color: COLORS.green,
-    fontWeight: '900',
+    color: PALETTE.green600,
+    fontWeight: WEIGHT.semibold,
   },
 
   historyExpanded: {
     borderTopWidth: 1,
-    borderTopColor: '#EEF2F7',
+    borderTopColor: DS.divider,
     paddingHorizontal: 14,
     paddingBottom: 14,
   },
@@ -935,35 +1009,33 @@ const styles = StyleSheet.create({
 
   miniStat: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.md,
     paddingVertical: 12,
     alignItems: 'center',
   },
 
   miniStatValue: {
-    fontSize: 18,
-    fontWeight: '900',
+    ...TYPO.s1,
   },
 
   miniStatLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.c3,
+    color: DS.textSecondary,
     marginTop: 3,
   },
 
   historySectionLabel: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textSecondary,
     marginBottom: 8,
     marginTop: 4,
   },
 
   historyLineCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.md,
     padding: 12,
     marginBottom: 8,
     flexDirection: 'row',
@@ -972,19 +1044,18 @@ const styles = StyleSheet.create({
   },
 
   emptyBox: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     paddingVertical: 20,
     alignItems: 'center',
     marginBottom: 14,
   },
 
   emptyText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '700',
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
 
   centerBox: {
@@ -994,14 +1065,14 @@ const styles = StyleSheet.create({
   },
 
   infoText: {
+    ...TYPO.b3,
     marginTop: 12,
-    color: COLORS.textSecondary,
-    fontSize: 14,
+    color: DS.textSecondary,
   },
 
   errorText: {
-    color: '#DC2626',
-    fontSize: 14,
+    ...TYPO.b3,
+    color: DS.red,
   },
 
   modalOverlay: {
@@ -1015,9 +1086,9 @@ const styles = StyleSheet.create({
   },
 
   modalSheet: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    backgroundColor: DS.white,
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 22,
@@ -1026,80 +1097,139 @@ const styles = StyleSheet.create({
   modalHandle: {
     width: 42,
     height: 4,
-    borderRadius: 99,
-    backgroundColor: '#D1D5DB',
+    borderRadius: RADIUS.pill,
+    backgroundColor: DS.grey300,
     alignSelf: 'center',
     marginBottom: 22,
   },
 
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
     marginBottom: 16,
   },
 
   modalDesc: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginBottom: 18,
   },
 
   inputLabel: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
     marginBottom: 8,
   },
 
   modalInput: {
     minHeight: 52,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 14,
-    backgroundColor: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    backgroundColor: DS.white,
+    ...TYPO.b2,
+    color: DS.textPrimary,
     marginBottom: 16,
   },
 
   productDropdown: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     maxHeight: 180,
     marginTop: -10,
     marginBottom: 16,
     overflow: 'hidden',
   },
 
+  modalLoaderBox: {
+    paddingVertical: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+
+  modalEmptyBox: {
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.md,
+    paddingVertical: 22,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+
+  returnProductList: {
+    maxHeight: 320,
+    marginBottom: 16,
+  },
+
+  returnProductItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+    backgroundColor: DS.white,
+  },
+
+  returnProductItemActive: {
+    borderColor: DS.primary,
+    backgroundColor: DS.primarySoft,
+  },
+
+  returnProductInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+
+  returnProductQtyPill: {
+    alignItems: 'center',
+    minWidth: 64,
+  },
+
+  returnProductQtyText: {
+    ...TYPO.h5,
+    color: DS.orange,
+  },
+
+  returnProductQtyLabel: {
+    ...TYPO.c3,
+    color: DS.textSecondary,
+  },
+
+  inlineQtyBox: {
+    marginTop: -2,
+    marginBottom: 12,
+  },
+
   productItem: {
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: DS.divider,
   },
 
   productName: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
 
   productType: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.c3,
+    color: DS.textSecondary,
     marginTop: 2,
   },
 
   selectedProductBox: {
-    backgroundColor: '#ECFDF5',
-    borderRadius: 10,
+    backgroundColor: DS.greenSoft,
+    borderRadius: RADIUS.sm,
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: 'row',
@@ -1109,16 +1239,16 @@ const styles = StyleSheet.create({
   },
 
   selectedProductText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.green,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: PALETTE.green600,
     flex: 1,
   },
 
   modalButton: {
     height: 60,
-    backgroundColor: '#8BB5F9',
-    borderRadius: 12,
+    backgroundColor: DS.primary,
+    borderRadius: RADIUS.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1127,9 +1257,8 @@ const styles = StyleSheet.create({
   },
 
   modalButtonText: {
-    color: COLORS.white,
-    fontSize: 18,
-    fontWeight: '900',
+    ...TYPO.s2,
+    color: DS.white,
   },
 
   disabledButton: {

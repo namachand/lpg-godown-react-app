@@ -15,7 +15,8 @@ import {
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, EYEBROW, RADIUS, WEIGHT } from '../../constants/designSystem';
+import { useDateRange } from '../../context/DateRangeContext';
 import {
     approveCommercialBooking,
     getCommercialBookings,
@@ -58,6 +59,7 @@ type DriverGroup = {
 type TabType = 'ALL' | 'PENDING' | 'OUT' | 'DONE';
 
 export default function CommercialBookingsScreen() {
+  const { rangeKey } = useDateRange();
   const [summary, setSummary] = useState({
     bookings: 0,
     cylinders: 0,
@@ -121,6 +123,10 @@ export default function CommercialBookingsScreen() {
     return () => clearTimeout(timer);
   }, [fetchBookings]);
 
+  useEffect(() => {
+    fetchBookings();
+  }, [rangeKey, fetchBookings]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchBookings();
@@ -178,7 +184,7 @@ export default function CommercialBookingsScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.titleRow}>
           <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={26} color={COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={26} color={DS.textPrimary} />
           </TouchableOpacity>
 
           <Text style={styles.pageTitle}>Commercial Bookings</Text>
@@ -195,20 +201,20 @@ export default function CommercialBookingsScreen() {
             <Ionicons
               name="search-outline"
               size={22}
-              color={COLORS.textSecondary}
+              color={DS.textSecondary}
             />
 
             <TextInput
               value={search}
               onChangeText={setSearch}
               placeholder="Search driver, customer, booking id"
-              placeholderTextColor={COLORS.textSecondary}
+              placeholderTextColor={DS.textSecondary}
               style={styles.searchInput}
             />
           </View>
 
           <TouchableOpacity style={styles.filterButton}>
-            <Ionicons name="cube-outline" size={23} color={COLORS.textPrimary} />
+            <Ionicons name="cube-outline" size={23} color={DS.textPrimary} />
           </TouchableOpacity>
         </View>
 
@@ -239,7 +245,7 @@ export default function CommercialBookingsScreen() {
 
         {loading ? (
           <View style={styles.loaderBox}>
-            <ActivityIndicator color={COLORS.primary} />
+            <ActivityIndicator color={DS.primary} />
             <Text style={styles.loadingText}>Loading bookings...</Text>
           </View>
         ) : visibleDrivers.length ? (
@@ -269,7 +275,7 @@ export default function CommercialBookingsScreen() {
                     <Ionicons
                       name="bus-outline"
                       size={25}
-                      color={COLORS.primary}
+                      color={DS.primary}
                     />
                   </View>
 
@@ -280,7 +286,7 @@ export default function CommercialBookingsScreen() {
                       <Ionicons
                         name="call-outline"
                         size={15}
-                        color={COLORS.textSecondary}
+                        color={DS.textSecondary}
                       />
                       <Text style={styles.driverPhone}>
                         {driver.driverPhone || 'N/A'}
@@ -299,7 +305,7 @@ export default function CommercialBookingsScreen() {
                   <Ionicons
                     name={isOpen ? 'chevron-up' : 'chevron-down'}
                     size={24}
-                    color={COLORS.textSecondary}
+                    color={DS.textSecondary}
                   />
                 </TouchableOpacity>
 
@@ -365,7 +371,7 @@ function BookingCard({
         <Ionicons
           name="location-outline"
           size={18}
-          color={COLORS.textSecondary}
+          color={DS.textSecondary}
         />
         <Text style={styles.bookingMetaText} numberOfLines={1}>
           {booking.address || 'No address'}
@@ -376,7 +382,7 @@ function BookingCard({
         <Ionicons
           name="time-outline"
           size={18}
-          color={COLORS.textSecondary}
+          color={DS.textSecondary}
         />
 
         <Text style={styles.bookingMetaText}>
@@ -386,7 +392,7 @@ function BookingCard({
           })}
         </Text>
 
-        <Ionicons name="cube-outline" size={18} color={COLORS.green} />
+        <Ionicons name="cube-outline" size={18} color={DS.green} />
 
         <Text style={styles.productQtyText}>
           {firstItem?.productName || 'Commercial'} × {booking.totalQty}
@@ -402,7 +408,7 @@ function BookingCard({
         <Ionicons
           name="checkmark-circle-outline"
           size={22}
-          color={COLORS.white}
+          color={DS.white}
         />
         <Text style={styles.approveButtonText}>
           {approved ? 'Approved' : 'Approve'}
@@ -426,9 +432,8 @@ const styles = StyleSheet.create({
   },
 
   pageTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
   statsRow: {
@@ -439,24 +444,21 @@ const styles = StyleSheet.create({
 
   topStatCard: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 16,
   },
 
   topStatLabel: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
-    letterSpacing: 0.5,
+    ...EYEBROW,
+    color: DS.textSecondary,
   },
 
   topStatValue: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
     marginTop: 6,
   },
 
@@ -470,9 +472,9 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 56,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    backgroundColor: COLORS.white,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.card,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
@@ -480,27 +482,26 @@ const styles = StyleSheet.create({
   },
 
   searchInput: {
+    ...TYPO.b2,
     flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: DS.textPrimary,
   },
 
   filterButton: {
     width: 56,
     height: 56,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    backgroundColor: COLORS.white,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   tabs: {
     flexDirection: 'row',
-    backgroundColor: '#ECEEF2',
-    borderRadius: 14,
+    backgroundColor: DS.grey100,
+    borderRadius: RADIUS.lg,
     padding: 4,
     marginBottom: 20,
   },
@@ -508,30 +509,30 @@ const styles = StyleSheet.create({
   tab: {
     flex: 1,
     height: 46,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   activeTab: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
   },
 
   tabText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textSecondary,
   },
 
   activeTabText: {
-    color: COLORS.textPrimary,
+    color: DS.textPrimary,
   },
 
   driverBox: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     marginBottom: 14,
     overflow: 'hidden',
   },
@@ -552,8 +553,8 @@ const styles = StyleSheet.create({
   driverIconBox: {
     width: 54,
     height: 54,
-    borderRadius: 14,
-    backgroundColor: COLORS.blueSoft,
+    borderRadius: RADIUS.md,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -564,9 +565,8 @@ const styles = StyleSheet.create({
   },
 
   driverName: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   phoneRow: {
@@ -577,29 +577,28 @@ const styles = StyleSheet.create({
   },
 
   driverPhone: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
   },
 
   openPill: {
-    backgroundColor: '#EF4444',
-    borderRadius: 999,
+    backgroundColor: DS.red,
+    borderRadius: RADIUS.pill,
     paddingHorizontal: 12,
     paddingVertical: 6,
     marginRight: 10,
   },
 
   openPillText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '900',
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
+    color: DS.white,
   },
 
   driverCount: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...TYPO.s2,
+    color: DS.textSecondary,
     marginRight: 10,
   },
 
@@ -607,14 +606,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: DS.border,
   },
 
   bookingCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: DS.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 14,
     marginTop: 14,
   },
@@ -627,42 +626,42 @@ const styles = StyleSheet.create({
   },
 
   customerName: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   bookingId: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 3,
   },
 
   pendingBadge: {
-    backgroundColor: COLORS.orangeSoft,
-    borderRadius: 999,
+    backgroundColor: DS.orangeSoft,
+    borderRadius: RADIUS.pill,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
 
   pendingText: {
-    color: COLORS.orange,
-    fontSize: 12,
-    fontWeight: '900',
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
+    color: DS.orangeText,
   },
 
   outBadge: {
-    backgroundColor: COLORS.blueSoft,
-    borderRadius: 999,
+    backgroundColor: DS.primarySoft,
+    borderRadius: RADIUS.pill,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
 
   outText: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: '900',
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
+    color: DS.primary,
   },
 
   bookingMetaRow: {
@@ -673,22 +672,21 @@ const styles = StyleSheet.create({
   },
 
   bookingMetaText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    ...TYPO.b3,
+    color: DS.textPrimary,
     flexShrink: 1,
   },
 
   productQtyText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
 
   approveButton: {
-    height: 64,
-    borderRadius: 14,
-    backgroundColor: COLORS.buttonGreen,
+    height: 52,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.buttonGreen,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -697,13 +695,12 @@ const styles = StyleSheet.create({
   },
 
   approvedButton: {
-    backgroundColor: COLORS.buttonGreen,
+    backgroundColor: DS.buttonGreen,
   },
 
   approveButtonText: {
-    color: COLORS.white,
-    fontSize: 18,
-    fontWeight: '900',
+    ...TYPO.s2,
+    color: DS.white,
   },
 
   loaderBox: {
@@ -712,23 +709,22 @@ const styles = StyleSheet.create({
   },
 
   loadingText: {
+    ...TYPO.b3,
     marginTop: 10,
-    fontSize: 14,
-    color: COLORS.textSecondary,
+    color: DS.textSecondary,
   },
 
   emptyBox: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 24,
     alignItems: 'center',
   },
 
   emptyText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
 });

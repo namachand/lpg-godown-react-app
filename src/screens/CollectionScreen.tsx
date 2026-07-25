@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,10 +15,10 @@ import {
 import AppHeader from '../components/common/AppHeader';
 import ScreenContainer from '../components/common/ScreenContainer';
 import CashDenominationModal from '../components/ui/CashDenominationModal';
-import { COLORS } from '../constants/colors';
+import { AUTH_USER_KEY } from '../constants/auth';
+import { DS, TYPO, RADIUS, PALETTE, WEIGHT } from '../constants/designSystem';
+import { useDateRange } from '../context/DateRangeContext';
 import api from '../services/api';
-
-const DRIVER_ID = 2;
 
 type CollectionStatus =
   | 'ASSIGNED'
@@ -125,7 +126,7 @@ const getPaymentLabel = (method?: string) => {
   return value || 'N/A';
 };
 
-const TEXT_BLACK = COLORS.textPrimary;
+const TEXT_BLACK = DS.textPrimary;
 
 function CollectionActionCard({
   type,
@@ -148,8 +149,8 @@ function CollectionActionCard({
   const isPending = status === 'PENDING';
 
   const icon = type === 'CASH' ? 'wallet-outline' : 'phone-portrait-outline';
-  const color = type === 'CASH' ? COLORS.green : COLORS.primary;
-  const bg = type === 'CASH' ? '#EAFBF0' : '#EEF4FF';
+  const color = type === 'CASH' ? DS.green : DS.primary;
+  const bg = type === 'CASH' ? DS.greenSoft : DS.primarySoft;
 
   return (
     <View style={styles.collectionCard}>
@@ -172,7 +173,7 @@ function CollectionActionCard({
             <Ionicons
               name="time-outline"
               size={14}
-              color={COLORS.orange}
+              color={DS.orange}
             />
             <Text style={styles.pendingPillText}>
               Pending for Cashier Approval
@@ -197,14 +198,14 @@ function CollectionActionCard({
             styles.collectionButton,
             {
               backgroundColor:
-                type === 'CASH' ? COLORS.green : COLORS.primary,
+                type === 'CASH' ? DS.buttonGreen : DS.primary,
             },
           ]}
           onPress={onPress}
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color={COLORS.white} />
+            <ActivityIndicator color={DS.white} />
           ) : (
             <>
               <Ionicons
@@ -214,7 +215,7 @@ function CollectionActionCard({
                     : 'card-outline'
                 }
                 size={16}
-                color={COLORS.white}
+                color={DS.white}
               />
               <Text style={styles.collectionButtonText}>
                 Settle Amount
@@ -228,6 +229,9 @@ function CollectionActionCard({
 }
 
 export default function CollectionScreen() {
+  const { rangeKey } = useDateRange();
+  const [driverId, setDriverId] = useState<number | null>(null);
+
   const [activeTab, setActiveTab] = useState<
     'summary' | 'history'
   >('summary');
@@ -250,25 +254,45 @@ export default function CollectionScreen() {
   const [cashModalVisible, setCashModalVisible] = useState(false);
   const [cashSubmitting, setCashSubmitting] = useState(false);
 
+  useEffect(() => {
+    const loadDriverId = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(AUTH_USER_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        const id = Number(parsed?.id);
+
+        setDriverId(id && !Number.isNaN(id) ? id : null);
+      } catch {
+        setDriverId(null);
+      }
+    };
+
+    loadDriverId();
+  }, []);
+
   const fetchCollectionSummary = useCallback(async () => {
+    if (!driverId) return;
+
     const response = await api.get(
-      `/drivers/${DRIVER_ID}/collection-summary`
+      `/drivers/${driverId}/collection-summary`
     );
 
     if (response.data?.success) {
       setSummaryData(response.data.data);
     }
-  }, []);
+  }, [driverId]);
 
   const fetchCollectionHistory = useCallback(async (page = 1) => {
+    if (!driverId) return;
+
     const response = await api.get(
-      `/drivers/${DRIVER_ID}/collection-history?page=${page}&limit=2`
+      `/drivers/${driverId}/collection-history?page=${page}&limit=2`
     );
 
     if (response.data?.success) {
       setHistoryData(response.data.data);
     }
-  }, []);
+  }, [driverId]);
 
   const loadScreen = useCallback(async () => {
     try {
@@ -294,7 +318,7 @@ export default function CollectionScreen() {
 
   useEffect(() => {
     loadScreen();
-  }, [loadScreen]);
+  }, [loadScreen, rangeKey]);
 
   const onRefresh = async () => {
     try {
@@ -316,11 +340,16 @@ export default function CollectionScreen() {
   };
 
   const handleSettleUpi = async () => {
+    if (!driverId) {
+      Alert.alert('Error', 'Driver session not found');
+      return;
+    }
+
     try {
       setSettlingMethod('UPI');
 
       const response = await api.put(
-        `/drivers/${DRIVER_ID}/settle-collections`,
+        `/drivers/${driverId}/settle-collections`,
         {
           method: 'UPI',
         }
@@ -345,11 +374,16 @@ export default function CollectionScreen() {
   };
 
   const handleSettleTotal = async () => {
+    if (!driverId) {
+      Alert.alert('Error', 'Driver session not found');
+      return;
+    }
+
     try {
       setSettlingMethod('TOTAL_UPI');
 
       const response = await api.put(
-        `/drivers/${DRIVER_ID}/settle-collections`,
+        `/drivers/${driverId}/settle-collections`,
         {
           method: 'TOTAL_UPI',
         }
@@ -388,6 +422,11 @@ export default function CollectionScreen() {
     };
     enteredAmount: number;
   }) => {
+    if (!driverId) {
+      Alert.alert('Error', 'Driver session not found');
+      return;
+    }
+
     try {
       const expectedAmount =
         summaryData?.settlements?.cashAssigned?.amount ?? 0;
@@ -404,7 +443,7 @@ export default function CollectionScreen() {
       setCashSubmitting(true);
 
       const response = await api.put(
-        `/drivers/${DRIVER_ID}/settle-collections`,
+        `/drivers/${driverId}/settle-collections`,
         {
           method: 'CASH',
           denominations,
@@ -473,7 +512,7 @@ export default function CollectionScreen() {
               color={
                 activeTab === 'summary'
                   ? TEXT_BLACK
-                  : COLORS.textSecondary
+                  : DS.textSecondary
               }
             />
 
@@ -502,7 +541,7 @@ export default function CollectionScreen() {
               color={
                 activeTab === 'history'
                   ? TEXT_BLACK
-                  : COLORS.textSecondary
+                  : DS.textSecondary
               }
             />
 
@@ -521,7 +560,7 @@ export default function CollectionScreen() {
         {loading ? (
           <ActivityIndicator
             size="large"
-            color={COLORS.primary}
+            color={DS.primary}
             style={{ marginTop: 40 }}
           />
         ) : activeTab === 'summary' ? (
@@ -531,13 +570,13 @@ export default function CollectionScreen() {
                 <View
                   style={[
                     styles.summaryIconWrap,
-                    { backgroundColor: '#EAFBF0' },
+                    { backgroundColor: DS.greenSoft },
                   ]}
                 >
                   <Ionicons
                     name="wallet-outline"
                     size={22}
-                    color={COLORS.green}
+                    color={DS.green}
                   />
                 </View>
 
@@ -556,13 +595,13 @@ export default function CollectionScreen() {
                 <View
                   style={[
                     styles.summaryIconWrap,
-                    { backgroundColor: '#EEF4FF' },
+                    { backgroundColor: DS.primarySoft },
                   ]}
                 >
                   <Ionicons
                     name="phone-portrait-outline"
                     size={22}
-                    color={COLORS.primary}
+                    color={DS.primary}
                   />
                 </View>
 
@@ -632,13 +671,13 @@ export default function CollectionScreen() {
                   <View
                     style={[
                       styles.iconWrap,
-                      { backgroundColor: '#EEF4FF' },
+                      { backgroundColor: DS.primarySoft },
                     ]}
                   >
                     <Ionicons
                       name="card-outline"
                       size={18}
-                      color={COLORS.primary}
+                      color={DS.primary}
                     />
                   </View>
 
@@ -656,7 +695,7 @@ export default function CollectionScreen() {
                 <TouchableOpacity
                   style={[
                     styles.collectionButton,
-                    { backgroundColor: COLORS.primary },
+                    { backgroundColor: DS.primary },
                   ]}
                   onPress={handleSettleTotal}
                   disabled={
@@ -665,14 +704,14 @@ export default function CollectionScreen() {
                 >
                   {settlingMethod === 'TOTAL_UPI' ? (
                     <ActivityIndicator
-                      color={COLORS.white}
+                      color={DS.white}
                     />
                   ) : (
                     <>
                       <Ionicons
                         name="card-outline"
                         size={16}
-                        color={COLORS.white}
+                        color={DS.white}
                       />
 
                       <Text
@@ -695,7 +734,7 @@ export default function CollectionScreen() {
                     <Ionicons
                       name="calendar-outline"
                       size={18}
-                      color={COLORS.textSecondary}
+                      color={DS.textSecondary}
                     />
 
                     <Text style={styles.historyDate}>
@@ -762,8 +801,8 @@ export default function CollectionScreen() {
                           {
                             backgroundColor:
                               item.paymentMode === 'CASH'
-                                ? '#EAFBF0'
-                                : '#EEF4FF',
+                                ? DS.greenSoft
+                                : DS.primarySoft,
                           },
                         ]}
                       >
@@ -776,8 +815,8 @@ export default function CollectionScreen() {
                           size={18}
                           color={
                             item.paymentMode === 'CASH'
-                              ? COLORS.green
-                              : COLORS.primary
+                              ? DS.green
+                              : DS.primary
                           }
                         />
                       </View>
@@ -837,8 +876,8 @@ const styles = StyleSheet.create({
 
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#F1F1F1',
-    borderRadius: 18,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.lg,
     padding: 4,
     marginBottom: 18,
   },
@@ -846,7 +885,7 @@ const styles = StyleSheet.create({
   tabButton: {
     flex: 1,
     height: 48,
-    borderRadius: 14,
+    borderRadius: RADIUS.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -854,13 +893,13 @@ const styles = StyleSheet.create({
   },
 
   activeTabButton: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
   },
 
   tabText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textSecondary,
   },
 
   activeTabText: {
@@ -875,42 +914,40 @@ const styles = StyleSheet.create({
 
   summaryCard: {
     flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: 22,
-    paddingVertical: 28,
+    backgroundColor: DS.white,
+    borderRadius: RADIUS.xl,
+    paddingVertical: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ECECEC',
+    borderColor: DS.border,
   },
 
   summaryIconWrap: {
     width: 54,
     height: 54,
-    borderRadius: 18,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    marginBottom: 16,
   },
 
   summaryAmount: {
-    fontSize: 22,
-    fontWeight: '800',
+    ...TYPO.h5,
     color: TEXT_BLACK,
     marginBottom: 8,
   },
 
   summaryLabel: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '700',
+    ...TYPO.c2,
+    color: DS.textSecondary,
   },
 
   collectionCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
+    backgroundColor: DS.white,
+    borderRadius: RADIUS.xxl,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#ECECEC',
+    borderColor: DS.border,
     marginBottom: 18,
   },
 
@@ -929,20 +966,18 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 46,
     height: 46,
-    borderRadius: 14,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   collectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
+    ...TYPO.s2,
     color: TEXT_BLACK,
   },
 
   collectionAmount: {
-    fontSize: 16,
-    fontWeight: '800',
+    ...TYPO.s2,
     color: TEXT_BLACK,
     marginTop: 2,
   },
@@ -951,17 +986,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FFF6E9',
+    backgroundColor: DS.orangeSoft,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: RADIUS.pill,
     maxWidth: 160,
   },
 
   pendingPillText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.orange,
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
+    color: DS.orangeText,
   },
 
   collectionInfoRow: {
@@ -971,20 +1007,19 @@ const styles = StyleSheet.create({
   },
 
   collectionInfoText: {
-    fontSize: 15,
-    fontWeight: '700',
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
     color: TEXT_BLACK,
   },
 
   collectionInfoAmount: {
-    fontSize: 15,
-    fontWeight: '800',
+    ...TYPO.s2,
     color: TEXT_BLACK,
   },
 
   collectionButton: {
     height: 54,
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -992,26 +1027,25 @@ const styles = StyleSheet.create({
   },
 
   collectionButtonText: {
-    color: COLORS.white,
-    fontSize: 17,
-    fontWeight: '800',
+    ...TYPO.s2,
+    color: DS.white,
   },
 
   totalCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
+    backgroundColor: DS.white,
+    borderRadius: RADIUS.xxl,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#ECECEC',
+    borderColor: DS.border,
     marginBottom: 18,
   },
 
   historyGroup: {
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
+    backgroundColor: DS.white,
+    borderRadius: RADIUS.xxl,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#ECECEC',
+    borderColor: DS.border,
     marginBottom: 18,
   },
 
@@ -1028,15 +1062,13 @@ const styles = StyleSheet.create({
   },
 
   historyDate: {
-    fontSize: 16,
-    fontWeight: '800',
+    ...TYPO.s2,
     color: TEXT_BLACK,
   },
 
   historyTotal: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.primary,
+    ...TYPO.s1,
+    color: DS.primary,
   },
 
   summaryStatusRow: {
@@ -1047,27 +1079,25 @@ const styles = StyleSheet.create({
 
   historyStatusCard: {
     flex: 1,
-    backgroundColor: '#EEF8F0',
-    borderRadius: 18,
+    backgroundColor: DS.greenSoft,
+    borderRadius: RADIUS.lg,
     padding: 14,
   },
 
   historyStatusTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.green,
+    ...TYPO.s2,
+    color: PALETTE.green600,
     marginBottom: 6,
   },
 
   historyStatusText: {
-    fontSize: 13,
-    color: COLORS.green,
-    fontWeight: '600',
+    ...TYPO.c2,
+    color: PALETTE.green600,
   },
 
   historyTransaction: {
-    backgroundColor: '#FAFAFA',
-    borderRadius: 18,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.lg,
     padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1076,35 +1106,33 @@ const styles = StyleSheet.create({
   },
 
   customerName: {
-    fontSize: 16,
-    fontWeight: '800',
+    ...TYPO.s2,
     color: TEXT_BLACK,
     marginBottom: 4,
   },
 
   customerMeta: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
 
   transactionAmount: {
-    fontSize: 16,
-    fontWeight: '800',
+    ...TYPO.s2,
     color: TEXT_BLACK,
     marginBottom: 6,
   },
 
   paidPill: {
-    backgroundColor: '#EAFBF0',
-    borderRadius: 999,
+    backgroundColor: DS.greenSoft,
+    borderRadius: RADIUS.pill,
     paddingHorizontal: 12,
     paddingVertical: 5,
   },
 
   paidText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.green,
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
+    color: PALETTE.green600,
   },
 });

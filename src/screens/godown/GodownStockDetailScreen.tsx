@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -13,41 +13,88 @@ import {
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, EYEBROW, RADIUS, PALETTE, WEIGHT } from '../../constants/designSystem';
+import { useDateRange } from '../../context/DateRangeContext';
 import api from '../../services/api';
 
 type StockItem = {
   productId: number;
   productName: string;
+  item?: string;
   quantity: number;
   emptyQuantity?: number;
   defectiveQuantity?: number;
+  physical?: number;
+  system?: number;
+  diff?: number;
 };
 
 type StockDetailData = {
-  type: 'domestic' | 'commercial';
+  type: string;
+  mode?: 'available' | 'empty';
   title: string;
   totalAvailable: number;
   totalEmpty: number;
   totalDefective: number;
+  totalStock?: number;
+  physical?: number;
+  system?: number;
+  diff?: number;
+  showBookings?: boolean;
   items: StockItem[];
 };
 
 export default function GodownStockDetailScreen() {
   const params = useLocalSearchParams();
   const type = String(params.type || 'domestic').toLowerCase();
+  const { rangeKey } = useDateRange();
 
   const [data, setData] = useState<StockDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const isCommercial = type === 'commercial';
+  const isEmptyType = type.includes('empty');
 
   const title = useMemo(() => {
-    return isCommercial ? 'Commercial Stock' : 'Domestic Stock';
-  }, [isCommercial]);
+    if (type === 'empty-domestic') return 'Domestic Empty';
+    if (type === 'empty-commercial') return 'Commercial Empty';
+    if (type === 'commercial') return 'Commercial Available';
+    return 'Domestic Available';
+  }, [type]);
 
-  const fetchStockDetail = async () => {
+  const totalStock = useMemo(() => {
+    if (!data) return 0;
+    return Number(
+      data.totalStock ??
+        (isEmptyType ? data.totalEmpty : data.totalAvailable)
+    );
+  }, [data, isEmptyType]);
+
+  const physical = useMemo(() => {
+    if (!data) return 0;
+    return Number(data.physical ?? totalStock);
+  }, [data, totalStock]);
+
+  const system = useMemo(() => {
+    if (!data) return 0;
+    return Number(data.system ?? totalStock);
+  }, [data, totalStock]);
+
+  const diff = useMemo(() => {
+    if (!data) return 0;
+    return Number(data.diff ?? physical - system);
+  }, [data, physical, system]);
+
+  const diffLabel = diff > 0 ? `+${diff}` : `${diff}`;
+
+  const badgeBg = diff === 0 ? DS.grey100 : diff > 0 ? DS.greenSoft : DS.redSoft;
+  const badgeColor = diff === 0 ? DS.textSecondary : diff > 0 ? PALETTE.green600 : DS.red;
+
+  const tileColor = isEmptyType ? DS.orange : isCommercial ? DS.green : DS.primary;
+  const tileBg = isEmptyType ? DS.orangeSoft : isCommercial ? DS.greenSoft : DS.primarySoft;
+
+  const fetchStockDetail = useCallback(async () => {
     try {
       const response = await api.get(`/godown/stock-detail/${type}`);
 
@@ -63,11 +110,11 @@ export default function GodownStockDetailScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [type]);
 
   useEffect(() => {
     fetchStockDetail();
-  }, [type]);
+  }, [fetchStockDetail, rangeKey]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -79,7 +126,7 @@ export default function GodownStockDetailScreen() {
       <ScreenContainer>
         <AppHeader />
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={DS.primary} />
           <Text style={styles.loaderText}>Loading stock details...</Text>
         </View>
       </ScreenContainer>
@@ -97,44 +144,46 @@ export default function GodownStockDetailScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={26} color={COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={26} color={DS.textPrimary} />
           </TouchableOpacity>
 
           <View>
             <Text style={styles.title}>{title}</Text>
-            <Text style={styles.subtitle}>
-              {data?.totalAvailable || 0} cylinders available
-            </Text>
           </View>
         </View>
 
-        <View style={styles.summaryGrid}>
-          <SummaryBox
-            label="Available"
-            value={data?.totalAvailable || 0}
-            icon="cube-outline"
-            color={COLORS.primary}
-            bg={COLORS.blueSoft}
-          />
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryTopRow}>
+            <View style={[styles.summaryIcon, { backgroundColor: tileBg }]}>
+              <Ionicons name="cube-outline" size={22} color={tileColor} />
+            </View>
 
-          <SummaryBox
-            label="Empties"
-            value={data?.totalEmpty || 0}
-            icon="refresh-outline"
-            color={COLORS.orange}
-            bg={COLORS.orangeSoft}
-          />
+            <View style={styles.stockBox}>
+              <Text style={styles.stockLabel}>TOTAL STOCK</Text>
+              <Text style={styles.stockValue}>{totalStock}</Text>
+            </View>
 
-          <SummaryBox
-            label="Defective"
-            value={data?.totalDefective || 0}
-            icon="warning-outline"
-            color="#EF4444"
-            bg="#FEE2E2"
-          />
+            <View style={[styles.diffBadge, { backgroundColor: badgeBg }]}>
+              <Text style={[styles.diffBadgeText, { color: badgeColor }]}>
+                {diffLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.metricsRow}>
+            <View style={styles.metricBox}>
+              <Text style={styles.metricLabel}>PHYSICAL</Text>
+              <Text style={styles.metricValue}>{physical}</Text>
+            </View>
+
+            <View style={styles.metricBox}>
+              <Text style={styles.metricLabel}>SYSTEM</Text>
+              <Text style={styles.metricValue}>{system}</Text>
+            </View>
+          </View>
         </View>
 
-        {isCommercial ? (
+        {(data?.showBookings ?? isCommercial) && !isEmptyType ? (
           <TouchableOpacity
             activeOpacity={0.85}
             style={styles.bookingCard}
@@ -142,7 +191,7 @@ export default function GodownStockDetailScreen() {
           >
             <View style={styles.bookingLeft}>
               <View style={styles.bookingIconBox}>
-                <Ionicons name="clipboard-outline" size={28} color={COLORS.primary} />
+                <Ionicons name="clipboard-outline" size={28} color={DS.primary} />
               </View>
 
               <View style={styles.bookingTextBox}>
@@ -156,32 +205,53 @@ export default function GodownStockDetailScreen() {
             <Ionicons
               name="chevron-forward"
               size={26}
-              color={COLORS.textSecondary}
+              color={DS.textSecondary}
             />
           </TouchableOpacity>
         ) : null}
 
-        <Text style={styles.sectionTitle}>ITEM BREAKDOWN</Text>
+        <Text style={styles.sectionTitle}>Item-wise Breakdown</Text>
 
         <View style={styles.breakdownCard}>
+          <View style={styles.tableHeadRow}>
+            <Text style={[styles.tableHeadText, { flex: 1.5 }]}>ITEM</Text>
+            <Text style={styles.tableHeadText}>PHYSICAL</Text>
+            <Text style={styles.tableHeadText}>SYSTEM</Text>
+            <Text style={[styles.tableHeadText, { textAlign: 'right' }]}>DIFF</Text>
+          </View>
+
           {(data?.items || []).length ? (
             data?.items.map((item) => (
               <View key={item.productId} style={styles.itemRow}>
-                <View style={styles.itemLeft}>
-                  <View style={styles.itemIconBox}>
-                    <Ionicons name="cube-outline" size={22} color={COLORS.primary} />
-                  </View>
+                <Text style={[styles.itemName, { flex: 1.5 }]}>
+                  {item.item || item.productName}
+                </Text>
 
-                  <View>
-                    <Text style={styles.itemName}>{item.productName}</Text>
-                    <Text style={styles.itemSub}>
-                      Empty: {item.emptyQuantity || 0} · Defective:{' '}
-                      {item.defectiveQuantity || 0}
-                    </Text>
-                  </View>
-                </View>
+                <Text style={styles.itemMetric}>
+                  {Number(item.physical ?? (isEmptyType ? item.emptyQuantity : item.quantity) ?? 0)}
+                </Text>
 
-                <Text style={styles.itemQty}>{item.quantity || 0}</Text>
+                <Text style={styles.itemMetric}>
+                  {Number(item.system ?? (isEmptyType ? item.emptyQuantity : item.quantity) ?? 0)}
+                </Text>
+
+                <Text
+                  style={[
+                    styles.itemDiff,
+                    {
+                      color:
+                        Number(item.diff || 0) === 0
+                          ? DS.textSecondary
+                          : Number(item.diff || 0) > 0
+                            ? PALETTE.green600
+                            : DS.red,
+                    },
+                  ]}
+                >
+                  {Number(item.diff || 0) > 0
+                    ? `+${Number(item.diff || 0)}`
+                    : `${Number(item.diff || 0)}`}
+                </Text>
               </View>
             ))
           ) : (
@@ -192,31 +262,6 @@ export default function GodownStockDetailScreen() {
         </View>
       </ScrollView>
     </ScreenContainer>
-  );
-}
-
-function SummaryBox({
-  label,
-  value,
-  icon,
-  color,
-  bg,
-}: {
-  label: string;
-  value: number;
-  icon: any;
-  color: string;
-  bg: string;
-}) {
-  return (
-    <View style={styles.summaryBox}>
-      <View style={[styles.summaryIcon, { backgroundColor: bg }]}>
-        <Ionicons name={icon} size={26} color={color} />
-      </View>
-
-      <Text style={styles.summaryValue}>{value}</Text>
-      <Text style={styles.summaryLabel}>{label}</Text>
-    </View>
   );
 }
 
@@ -233,10 +278,9 @@ const styles = StyleSheet.create({
   },
 
   loaderText: {
+    ...TYPO.b4,
     marginTop: 10,
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    color: DS.textSecondary,
   },
 
   headerRow: {
@@ -249,70 +293,99 @@ const styles = StyleSheet.create({
   backButton: {
     width: 52,
     height: 52,
-    borderRadius: 14,
-    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   title: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
-  subtitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    marginTop: 3,
-  },
-
-  summaryGrid: {
-    flexDirection: 'row',
-    gap: 10,
+  summaryCard: {
+    backgroundColor: DS.card,
+    borderWidth: 1,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
+    padding: 12,
     marginBottom: 16,
   },
 
-  summaryBox: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    paddingVertical: 18,
+  summaryTopRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-
-  summaryIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 10,
   },
 
-  summaryValue: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+  summaryIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
 
-  summaryLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
-    marginTop: 4,
+  stockBox: {
+    flex: 1,
+  },
+
+  stockLabel: {
+    ...EYEBROW,
+    color: DS.textSecondary,
+    letterSpacing: 0.6,
+  },
+
+  stockValue: {
+    ...TYPO.h3,
+    color: DS.textPrimary,
+  },
+
+  diffBadge: {
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+
+  diffBadgeText: {
+    ...TYPO.c2,
+    fontWeight: WEIGHT.semibold,
+  },
+
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+
+  metricBox: {
+    flex: 1,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+
+  metricLabel: {
+    ...EYEBROW,
+    color: DS.textSecondary,
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+
+  metricValue: {
+    ...TYPO.h4,
+    color: DS.textPrimary,
   },
 
   bookingCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.xl,
     padding: 16,
     marginBottom: 22,
     flexDirection: 'row',
@@ -329,8 +402,8 @@ const styles = StyleSheet.create({
   bookingIconBox: {
     width: 58,
     height: 58,
-    borderRadius: 16,
-    backgroundColor: COLORS.blueSoft,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -341,75 +414,71 @@ const styles = StyleSheet.create({
   },
 
   bookingTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   bookingSub: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 4,
   },
 
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginBottom: 12,
   },
 
   breakdownCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.xl,
     overflow: 'hidden',
   },
 
-  itemRow: {
-    padding: 16,
+  tableHeadRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: DS.surface,
+    flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    borderBottomColor: DS.divider,
   },
 
-  itemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  tableHeadText: {
+    ...EYEBROW,
     flex: 1,
+    color: DS.textSecondary,
+    letterSpacing: 0.6,
   },
 
-  itemIconBox: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: COLORS.blueSoft,
+  itemRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: DS.divider,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
   },
 
   itemName: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    color: DS.textPrimary,
   },
 
-  itemSub: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    marginTop: 4,
+  itemMetric: {
+    ...TYPO.s2,
+    flex: 1,
+    color: DS.textPrimary,
+    textAlign: 'center',
   },
 
-  itemQty: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+  itemDiff: {
+    ...TYPO.s2,
+    flex: 1,
+    textAlign: 'right',
   },
 
   emptyBox: {
@@ -418,8 +487,7 @@ const styles = StyleSheet.create({
   },
 
   emptyText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
 });

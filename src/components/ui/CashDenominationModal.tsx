@@ -10,7 +10,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, RADIUS } from '../../constants/designSystem';
 
 type Denominations = {
   "500": number;
@@ -154,13 +154,13 @@ export default function CashDenominationModal({
                 onPress={() => onSubmit({ denominations: values, enteredAmount })}
               >
                 {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
+                  <ActivityIndicator color={DS.white} />
                 ) : (
                   <>
                     <Ionicons
                       name="wallet-outline"
                       size={18}
-                      color={COLORS.white}
+                      color={DS.white}
                     />
                     <Text style={styles.submitText}>
                       Settle Cash — ₹{enteredAmount}
@@ -183,9 +183,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    backgroundColor: DS.card,
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 18,
@@ -193,8 +193,8 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    borderRadius: 999,
-    backgroundColor: '#D1D5DB',
+    borderRadius: RADIUS.pill,
+    backgroundColor: DS.borderStrong,
     alignSelf: 'center',
     marginBottom: 14,
   },
@@ -204,18 +204,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   totalText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.primary,
+    ...TYPO.s2,
+    color: DS.primary,
   },
   subtitle: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 10,
     marginBottom: 14,
   },
@@ -226,9 +224,8 @@ const styles = StyleSheet.create({
   },
   label: {
     width: 60,
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   counterWrap: {
     flexDirection: 'row',
@@ -240,68 +237,62 @@ const styles = StyleSheet.create({
   counterBtn: {
     width: 34,
     height: 34,
-    borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    borderRadius: RADIUS.sm,
+    backgroundColor: DS.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   counterBtnText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
   input: {
     width: 54,
     height: 34,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     textAlign: 'center',
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    backgroundColor: COLORS.white,
+    ...TYPO.s2,
+    color: DS.textPrimary,
+    backgroundColor: DS.card,
   },
   rowAmount: {
     width: 56,
     textAlign: 'right',
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
   summaryBox: {
     marginTop: 4,
     marginBottom: 14,
-    backgroundColor: COLORS.orangeSoft,
-    borderRadius: 12,
+    backgroundColor: DS.orangeSoft,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 14,
     paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   expectedText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.orange,
+    ...TYPO.b4,
+    color: DS.orangeText,
   },
   enteredText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.orange,
+    ...TYPO.b4,
+    color: DS.orangeText,
   },
   submitBtn: {
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: COLORS.buttonGreen,
+    height: 52,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.buttonGreen,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
   submitText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '800',
+    ...TYPO.s2,
+    color: DS.white,
   },
   disabled: {
     opacity: 0.7,

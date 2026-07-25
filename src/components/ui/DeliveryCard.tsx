@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, RADIUS, PALETTE } from '../../constants/designSystem';
 
 type Props = {
   name: string;
@@ -39,7 +39,7 @@ export default function DeliveryCard({
           <Text style={styles.name}>{name}</Text>
 
           <View style={styles.addressRow}>
-            <Ionicons name="location-outline" size={14} color={COLORS.textSecondary} />
+            <Ionicons name="location-outline" size={14} color={DS.textSecondary} />
             <Text style={styles.address}>{address}</Text>
           </View>
 
@@ -80,10 +80,10 @@ export default function DeliveryCard({
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color={COLORS.white} />
+            <ActivityIndicator color={DS.white} />
           ) : (
             <>
-              <Ionicons name="checkmark" size={18} color={COLORS.white} />
+              <Ionicons name="checkmark" size={18} color={DS.white} />
               <Text style={styles.buttonText}>Mark Delivered</Text>
             </>
           )}
@@ -95,10 +95,10 @@ export default function DeliveryCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
+    backgroundColor: DS.card,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     padding: 16,
     marginBottom: 14,
   },
@@ -111,9 +111,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   name: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
     marginBottom: 8,
   },
   addressRow: {
@@ -122,48 +121,47 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   address: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginLeft: 4,
     flexShrink: 1,
   },
   qty: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
   },
   badge: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 6,
+    borderRadius: RADIUS.pill,
     alignSelf: 'flex-start',
   },
   deliveredBadge: {
-    backgroundColor: COLORS.greenSoft,
+    backgroundColor: DS.greenSoft,
   },
   pendingBadge: {
-    backgroundColor: COLORS.orangeSoft,
+    backgroundColor: DS.orangeSoft,
   },
   cancelledBadge: {
-    backgroundColor: COLORS.redSoft,
+    backgroundColor: DS.redSoft,
   },
   badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
+    ...TYPO.c2,
   },
   deliveredText: {
-    color: COLORS.green,
+    color: PALETTE.green600,
   },
   pendingText: {
-    color: COLORS.orange,
+    color: DS.orangeText,
   },
   cancelledText: {
-    color: COLORS.red,
+    color: DS.red,
   },
   button: {
     marginTop: 14,
-    backgroundColor: COLORS.buttonGreen,
-    borderRadius: 12,
-    height: 50,
+    backgroundColor: DS.buttonGreen,
+    borderRadius: RADIUS.md,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -173,8 +171,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
+    ...TYPO.s2,
+    color: DS.white,
   },
 });

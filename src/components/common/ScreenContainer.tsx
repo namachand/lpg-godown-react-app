@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, ScrollViewProps, StyleSheet, ViewProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { COLORS } from '../../constants/colors';
+import { DS } from '../../constants/designSystem';
 
 type Props = ViewProps & {
   children: React.ReactNode;
@@ -26,11 +26,11 @@ export default function ScreenContainer({ children, refreshControl }: Props) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: DS.background,
   },
   scroll: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: DS.background,
   },
   content: {
     paddingBottom: 24,

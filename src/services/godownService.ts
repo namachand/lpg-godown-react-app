@@ -30,6 +30,11 @@ export const getCylinderProducts = async () => {
   return res.data.data;
 };
 
+export const getDispatchableCylinderProducts = async () => {
+  const res = await api.get('/godown/products?mode=dispatch');
+  return res.data.data;
+};
+
 export const getStockOutLoads = async () => {
   const res = await api.get('/godown/stock-out-loads');
   return res.data.data;
@@ -85,6 +90,11 @@ export const getDeliveryDrivers = async (
   return res.data.data;
 };
 
+export const getDriverDayWiseSummary = async (driverId: number) => {
+  const res = await api.get(`/godown/drivers/${driverId}/day-wise-summary`);
+  return res.data.data;
+};
+
 export const createDriverAllocation = async (payload: {
   driver_id: number;
   items: {
@@ -106,6 +116,16 @@ export const approveReturnByCondition = async (payload: {
   condition: 'empty' | 'normal' | 'defective';
 }) => {
   const res = await api.put('/godown/returns-today/approve', payload);
+  return res.data;
+};
+
+export const getTransferEmptyReturns = async () => {
+  const res = await api.get('/godown/transfer-empty-returns');
+  return res.data.data;
+};
+
+export const approveTransferEmptyReturn = async (id: number) => {
+  const res = await api.put('/godown/transfer-empty-returns/approve', { id });
   return res.data;
 };
 

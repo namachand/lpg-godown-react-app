@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -11,17 +11,19 @@ import {
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, RADIUS } from '../../constants/designSystem';
+import { useDateRange } from '../../context/DateRangeContext';
 import { getDeliveryDrivers } from '../../services/godownService';
 
 const filters = ['Today', 'Yesterday', 'This Week'];
 
 export default function GodownDriversScreen() {
+  const { rangeKey } = useDateRange();
   const [activeFilter, setActiveFilter] = useState('Today');
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchDrivers = async (filterValue = activeFilter) => {
+  const fetchDrivers = useCallback(async (filterValue = activeFilter) => {
     try {
       setLoading(true);
 
@@ -39,13 +41,17 @@ export default function GodownDriversScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeFilter]);
 
   useFocusEffect(
     useCallback(() => {
       fetchDrivers();
-    }, [])
+    }, [fetchDrivers])
   );
+
+  useEffect(() => {
+    fetchDrivers(activeFilter);
+  }, [rangeKey, activeFilter, fetchDrivers]);
 
   return (
     <ScreenContainer>
@@ -77,7 +83,7 @@ export default function GodownDriversScreen() {
 
         {loading ? (
           <View style={styles.loaderBox}>
-            <ActivityIndicator color={COLORS.primary} />
+            <ActivityIndicator color={DS.primary} />
           </View>
         ) : (
           drivers.map((driver) => (
@@ -92,6 +98,8 @@ export default function GodownDriversScreen() {
                     id: String(driver.id),
                     name: driver.name,
                     allocated: String(driver.allocated || 0),
+                    allocatedToday: String(driver.allocatedToday ?? driver.allocated ?? 0),
+                    carriedForward: String(driver.carriedForward || 0),
                     delivered: String(driver.delivered || 0),
                     empty: String(driver.empty || 0),
                     inHand: String(driver.inHand || 0),
@@ -100,22 +108,28 @@ export default function GodownDriversScreen() {
               }
             >
               <View style={styles.avatarBox}>
-                <Ionicons name="person-outline" size={28} color={COLORS.primary} />
+                <Ionicons name="person-outline" size={28} color={DS.primary} />
               </View>
 
               <View style={styles.driverContent}>
                 <Text style={styles.driverName}>{driver.name}</Text>
 
+                {Number(driver.carriedForward || 0) > 0 ? (
+                  <Text style={styles.carryForwardNote}>
+                    Includes {driver.carriedForward} carried forward from previous day
+                  </Text>
+                ) : null}
+
                 <View style={styles.statsGrid}>
                   <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: COLORS.primary }]}>
+                    <Text style={[styles.statValue, { color: DS.primary }]}>
                       {driver.allocated}
                     </Text>
                     <Text style={styles.statLabel}>Allocated</Text>
                   </View>
 
                   <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: COLORS.green }]}>
+                    <Text style={[styles.statValue, { color: DS.green }]}>
                       {driver.delivered}
                     </Text>
                     <Text style={styles.statLabel}>Delivered</Text>
@@ -127,7 +141,7 @@ export default function GodownDriversScreen() {
                   </View>
 
                   <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: COLORS.orange }]}>
+                    <Text style={[styles.statValue, { color: DS.orange }]}>
                       {driver.inHand}
                     </Text>
                     <Text style={styles.statLabel}>In-Hand</Text>
@@ -135,7 +149,7 @@ export default function GodownDriversScreen() {
                 </View>
               </View>
 
-              <Ionicons name="chevron-forward" size={22} color={COLORS.textSecondary} />
+              <Ionicons name="chevron-forward" size={22} color={DS.textSecondary} />
             </TouchableOpacity>
           ))
         )}
@@ -149,27 +163,26 @@ const styles = StyleSheet.create({
   loaderBox: { height: 300, alignItems: 'center', justifyContent: 'center' },
   filterRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   filterButton: {
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 22,
-    backgroundColor: COLORS.white,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: RADIUS.pill,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
   },
-  filterButtonActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  filterText: { fontSize: 14, fontWeight: '800', color: COLORS.textPrimary },
-  filterTextActive: { color: COLORS.white },
+  filterButtonActive: { backgroundColor: DS.primary, borderColor: DS.primary },
+  filterText: { ...TYPO.b4, color: DS.textPrimary },
+  filterTextActive: { color: DS.white },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginBottom: 12,
   },
   driverCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 14,
     marginBottom: 12,
     flexDirection: 'row',
@@ -178,17 +191,22 @@ const styles = StyleSheet.create({
   avatarBox: {
     width: 58,
     height: 58,
-    borderRadius: 14,
-    backgroundColor: COLORS.blueSoft,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
   },
   driverContent: { flex: 1 },
   driverName: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
+    marginBottom: 10,
+  },
+  carryForwardNote: {
+    ...TYPO.c1,
+    color: DS.orange,
+    marginTop: -6,
     marginBottom: 10,
   },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 8 },
@@ -198,6 +216,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  statValue: { fontSize: 15, fontWeight: '900', color: COLORS.textPrimary },
-  statLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary },
+  statValue: { ...TYPO.s2, color: DS.textPrimary },
+  statLabel: { ...TYPO.c1, color: DS.textSecondary },
 });

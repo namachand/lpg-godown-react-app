@@ -1,22 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, ViewStyle } from 'react-native';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, RADIUS, PALETTE } from '../../constants/designSystem';
 
 type Props = {
   title: string;
-  value: string;
+  value: string | number;
   icon: keyof typeof Ionicons.glyphMap;
   tone?: 'blue' | 'green' | 'orange' | 'red';
+  subLabel?: string;
   onPress?: () => void;
   style?: ViewStyle;
 };
 
 const toneMap = {
-  blue: { bg: COLORS.blueSoft, color: COLORS.primary },
-  green: { bg: COLORS.greenSoft, color: COLORS.green },
-  orange: { bg: COLORS.orangeSoft, color: COLORS.orange },
-  red: { bg: COLORS.redSoft, color: COLORS.red },
+  blue: { bg: DS.primarySoft, color: DS.primary },
+  green: { bg: DS.greenSoft, color: PALETTE.green600 },
+  orange: { bg: DS.orangeSoft, color: DS.orange },
+  red: { bg: DS.redSoft, color: DS.red },
 };
 
 export default function StatCard({
@@ -24,6 +25,7 @@ export default function StatCard({
   value,
   icon,
   tone = 'blue',
+  subLabel,
   onPress,
   style,
 }: Props) {
@@ -44,6 +46,7 @@ export default function StatCard({
       />
       <Text style={styles.value}>{value}</Text>
       <Text style={styles.title}>{title}</Text>
+      {subLabel && <Text style={styles.subLabel}>{subLabel}</Text>}
     </TouchableOpacity>
   );
 }
@@ -51,32 +54,35 @@ export default function StatCard({
 const styles = StyleSheet.create({
   card: {
     width: '31.5%',
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
+    backgroundColor: DS.card,
+    borderRadius: RADIUS.lg,
     paddingVertical: 18,
     paddingHorizontal: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     marginBottom: 12,
   },
   iconWrap: {
     padding: 12,
-    borderRadius: 18,
+    borderRadius: RADIUS.md,
     marginBottom: 12,
     overflow: 'hidden',
   },
   value: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    marginBottom: 8,
+    ...TYPO.h5,
+    color: DS.textPrimary,
+    marginBottom: 6,
   },
   title: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    ...TYPO.c2,
+    color: DS.textSecondary,
     textAlign: 'center',
-    lineHeight: 14,
+  },
+  subLabel: {
+    ...TYPO.c3,
+    color: DS.textTertiary,
+    textAlign: 'center',
+    marginTop: 4,
   },
 });

@@ -13,7 +13,7 @@ import {
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, EYEBROW, RADIUS, WEIGHT } from '../../constants/designSystem';
 import {
   createDefectiveLoad,
   getCylinderProducts,
@@ -116,7 +116,7 @@ export default function GodownNewDefectiveScreen() {
       <ScreenContainer>
         <AppHeader />
         <View style={styles.loaderBox}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color={DS.primary} />
         </View>
       </ScreenContainer>
     );
@@ -217,8 +217,8 @@ export default function GodownNewDefectiveScreen() {
               icon="car-outline"
               active={stockFrom === 'depot'}
               onPress={() => setStockFrom('depot')}
-              color={COLORS.primary}
-              bg={COLORS.blueSoft}
+              color={DS.primary}
+              bg={DS.primarySoft}
             />
 
             <ReasonCard
@@ -227,8 +227,8 @@ export default function GodownNewDefectiveScreen() {
               icon="business-outline"
               active={stockFrom === 'godown'}
               onPress={() => setStockFrom('godown')}
-              color={COLORS.orange}
-              bg={COLORS.orangeSoft}
+              color={DS.orange}
+              bg={DS.orangeSoft}
             />
 
             <ReasonCard
@@ -237,8 +237,8 @@ export default function GodownNewDefectiveScreen() {
               icon="bicycle-outline"
               active={stockFrom === 'driver'}
               onPress={() => setStockFrom('driver')}
-              color={COLORS.green}
-              bg={COLORS.greenSoft}
+              color={DS.green}
+              bg={DS.greenSoft}
             />
 
             {stockFrom === 'driver' && (
@@ -283,7 +283,7 @@ export default function GodownNewDefectiveScreen() {
             <TextInput
               style={styles.notesInput}
               placeholder="Describe the defect (leak, dent, valve, etc.)"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={DS.textTertiary}
               value={notes}
               onChangeText={setNotes}
               multiline
@@ -294,7 +294,7 @@ export default function GodownNewDefectiveScreen() {
               onPress={handleSubmit}
               disabled={submitting}
             >
-              <Ionicons name="checkmark" size={18} color={COLORS.white} />
+              <Ionicons name="checkmark" size={18} color={DS.white} />
               <Text style={styles.nextButtonText}>
                 {submitting ? 'Logging...' : `Log ${total} Defectives`}
               </Text>
@@ -363,13 +363,13 @@ function CategoryCard({
       <Ionicons
         name="cube-outline"
         size={26}
-        color={active ? COLORS.white : COLORS.textPrimary}
+        color={active ? DS.white : DS.textPrimary}
       />
       <Text
         style={[
           styles.categoryText,
           active && {
-            color: COLORS.white,
+            color: DS.white,
           },
         ]}
       >
@@ -436,7 +436,7 @@ function ReasonCard({
       <Ionicons
         name={active ? 'checkmark-circle' : 'ellipse-outline'}
         size={22}
-        color={active ? COLORS.primary : COLORS.border}
+        color={active ? DS.primary : DS.border}
       />
     </TouchableOpacity>
   );
@@ -450,34 +450,33 @@ const styles = StyleSheet.create({
   },
   topTabs: {
     height: 44,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DS.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
   },
   activeTab: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '900',
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.primary,
     borderBottomWidth: 2,
-    borderBottomColor: COLORS.primary,
+    borderBottomColor: DS.primary,
     paddingBottom: 12,
   },
   inactiveTab: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '800',
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
   content: {
     padding: 16,
     paddingBottom: 120,
   },
   backText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: '800',
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.primary,
     marginBottom: 22,
   },
   stepRow: {
@@ -493,41 +492,39 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepCircleActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: DS.primary,
+    borderColor: DS.primary,
   },
   stepCircleDone: {
-    backgroundColor: COLORS.green,
-    borderColor: COLORS.green,
+    backgroundColor: DS.green,
+    borderColor: DS.green,
   },
   stepNumber: {
-    color: COLORS.white,
-    fontWeight: '900',
-    fontSize: 12,
+    ...TYPO.c2,
+    fontWeight: WEIGHT.semibold,
+    color: DS.white,
   },
   stepTitle: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.c2,
+    color: DS.textPrimary,
     marginLeft: 6,
   },
   stepLine: {
     flex: 1,
     height: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: DS.border,
     marginHorizontal: 8,
   },
   label: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textSecondary,
     letterSpacing: 0.8,
     marginBottom: 8,
     marginTop: 14,
@@ -539,27 +536,26 @@ const styles = StyleSheet.create({
   categoryCard: {
     flex: 1,
     height: 82,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
   categoryCardActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: DS.primary,
+    borderColor: DS.primary,
   },
   categoryText: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   nextButton: {
-    height: 56,
-    backgroundColor: COLORS.green,
-    borderRadius: 14,
+    height: 52,
+    backgroundColor: DS.buttonGreen,
+    borderRadius: RADIUS.lg,
     marginTop: 18,
     alignItems: 'center',
     justifyContent: 'center',
@@ -567,9 +563,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   nextButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '900',
+    ...TYPO.s2,
+    color: DS.white,
   },
   disabledButton: {
     opacity: 0.45,
@@ -580,122 +575,116 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   changeText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.primary,
+    ...TYPO.c2,
+    color: DS.primary,
     marginTop: 14,
   },
   groupCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     overflow: 'hidden',
   },
   qtyRow: {
     minHeight: 58,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: DS.divider,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   qtyLabel: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    color: DS.textPrimary,
     flex: 1,
   },
   qtyInput: {
     width: 108,
     height: 38,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
+    borderColor: DS.border,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.sm,
     textAlign: 'center',
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   totalBox: {
     marginTop: 16,
     height: 52,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: DS.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   totalLabel: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...EYEBROW,
+    color: DS.textSecondary,
+    letterSpacing: 0.8,
   },
   totalValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#EF4444',
+    ...TYPO.h5,
+    color: DS.red,
   },
   reasonCard: {
     minHeight: 64,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     padding: 12,
     marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
   },
   reasonCardActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.blueSoft,
+    borderColor: DS.primary,
+    backgroundColor: DS.primarySoft,
   },
   reasonIcon: {
     width: 42,
     height: 42,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   reasonTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
   reasonDesc: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 2,
   },
   input: {
     minHeight: 50,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 14,
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.b2,
+    color: DS.textPrimary,
   },
   notesInput: {
     minHeight: 74,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.primary,
-    borderRadius: 12,
+    borderColor: DS.primary,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 14,
     paddingTop: 12,
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    color: DS.textPrimary,
     textAlignVertical: 'top',
   },
   driverWrap: {
@@ -705,22 +694,21 @@ const styles = StyleSheet.create({
   },
   driverPill: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.pill,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
   },
   driverPillActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: DS.primary,
+    borderColor: DS.primary,
   },
   driverText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.c2,
+    color: DS.textPrimary,
   },
   driverTextActive: {
-    color: COLORS.white,
+    color: DS.white,
   },
 });

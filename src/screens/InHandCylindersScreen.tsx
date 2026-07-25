@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -12,10 +13,10 @@ import {
 
 import AppHeader from '../components/common/AppHeader';
 import ScreenContainer from '../components/common/ScreenContainer';
-import { COLORS } from '../constants/colors';
+import { AUTH_USER_KEY } from '../constants/auth';
+import { DS, TYPO, RADIUS, WEIGHT } from '../constants/designSystem';
+import { useDateRange } from '../context/DateRangeContext';
 import api from '../services/api';
-
-const DRIVER_ID = 2;
 
 type RequestItem = {
   id: number;
@@ -30,6 +31,8 @@ type RequestItem = {
 type InHandData = {
   summary: {
     allocated: number;
+    allocatedToday?: number;
+    carriedForward?: number;
     delivered: number;
     returned?: number;
     defective?: number;
@@ -49,17 +52,39 @@ const formatTime = (value?: string | null) => {
 
 export default function InHandCylindersScreen() {
   const router = useRouter();
+  const { rangeKey } = useDateRange();
+  const [driverId, setDriverId] = useState<number | null>(null);
 
   const [data, setData] = useState<InHandData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    const loadDriverId = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(AUTH_USER_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        const id = Number(parsed?.id);
+        setDriverId(Number.isNaN(id) ? null : id);
+      } catch {
+        setDriverId(null);
+      }
+    };
+
+    loadDriverId();
+  }, []);
+
   const fetchInHandSummary = useCallback(async () => {
     try {
       setError('');
 
-      const response = await api.get(`/drivers/${DRIVER_ID}/in-hand-summary`);
+      if (!driverId) {
+        setError('Unable to identify driver session');
+        return;
+      }
+
+      const response = await api.get(`/drivers/${driverId}/in-hand-summary`);
 
       if (response.data?.success) {
         setData(response.data.data);
@@ -73,7 +98,7 @@ export default function InHandCylindersScreen() {
       );
       setError('Failed to load in-hand summary');
     }
-  }, []);
+  }, [driverId]);
 
   useEffect(() => {
     const load = async () => {
@@ -83,7 +108,7 @@ export default function InHandCylindersScreen() {
     };
 
     load();
-  }, [fetchInHandSummary]);
+  }, [fetchInHandSummary, rangeKey]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -112,7 +137,7 @@ export default function InHandCylindersScreen() {
             style={styles.backButton}
             onPress={() => router.back()}
           >
-            <Ionicons name="arrow-back" size={28} color={COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={28} color={DS.textPrimary} />
           </TouchableOpacity>
 
           <Text style={styles.pageTitle}>In-Hand Cylinders</Text>
@@ -120,7 +145,7 @@ export default function InHandCylindersScreen() {
 
         {loading ? (
           <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <ActivityIndicator size="large" color={DS.primary} />
             <Text style={styles.infoText}>Loading in-hand summary...</Text>
           </View>
         ) : error ? (
@@ -137,24 +162,46 @@ export default function InHandCylindersScreen() {
         ) : (
           <>
             <View style={styles.statsRow}>
+              {(() => {
+                const inHandRemaining = Number(data?.summary?.inHand ?? 0);
+                const inHandReturned = Number(data?.summary?.returned ?? 0);
+                const inHandDefective = Number(data?.summary?.defective ?? 0);
+                const inHandOriginal =
+                  inHandRemaining + inHandReturned + inHandDefective;
+
+                return (
+                  <>
               <StatCard
                 value={data?.summary?.allocated ?? 0}
                 label="Allocated"
-                color={COLORS.primary}
+                color={DS.primary}
               />
 
               <StatCard
                 value={data?.summary?.delivered ?? 0}
                 label="Delivered"
-                color={COLORS.green}
+                color={DS.green}
               />
 
               <StatCard
-                value={data?.summary?.inHand ?? 0}
+                value={`${inHandRemaining}/${inHandOriginal}`}
                 label="In Hand"
-                color={COLORS.orange}
+                color={DS.orange}
               />
+                  </>
+                );
+              })()}
             </View>
+
+            {Number(data?.summary?.carriedForward ?? 0) > 0 ? (
+              <View style={styles.carryForwardBanner}>
+                <Ionicons name="repeat-outline" size={18} color={DS.orange} />
+                <Text style={styles.carryForwardText}>
+                  {data?.summary?.carriedForward} cylinder(s) carried forward from
+                  previous day(s) are included in your allocated total.
+                </Text>
+              </View>
+            ) : null}
 
             <Text style={styles.sectionTitle}>Return Requests</Text>
 
@@ -209,7 +256,7 @@ function StatCard({
   label,
   color,
 }: {
-  value: number;
+  value: number | string;
   label: string;
   color: string;
 }) {
@@ -247,7 +294,7 @@ function RequestCard({
           <Ionicons
             name={isDefective ? 'warning-outline' : 'time-outline'}
             size={18}
-            color={isDefective ? '#EF4444' : COLORS.orange}
+            color={isDefective ? DS.red : DS.orange}
           />
         </View>
 
@@ -303,9 +350,8 @@ const styles = StyleSheet.create({
   },
 
   pageTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
   statsRow: {
@@ -316,39 +362,52 @@ const styles = StyleSheet.create({
 
   statCard: {
     flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
+    backgroundColor: DS.white,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     paddingVertical: 18,
     alignItems: 'center',
   },
 
   statValue: {
-    fontSize: 26,
-    fontWeight: '900',
+    ...TYPO.h5,
     marginBottom: 6,
   },
 
   statLabel: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '800',
+    ...TYPO.c2,
+    color: DS.textSecondary,
+  },
+
+  carryForwardBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: DS.orange,
+    borderRadius: RADIUS.lg,
+    padding: 12,
+    marginBottom: 16,
+  },
+  carryForwardText: {
+    ...TYPO.c1,
+    color: DS.textSecondary,
+    flex: 1,
   },
 
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginBottom: 10,
     marginTop: 4,
   },
 
   requestCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -366,7 +425,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: DS.orangeSoft,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
@@ -376,7 +435,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: DS.redSoft,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
@@ -387,16 +446,15 @@ const styles = StyleSheet.create({
   },
 
   requestTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
 
   requestProduct: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 2,
-    fontWeight: '700',
   },
 
   metaRow: {
@@ -406,61 +464,63 @@ const styles = StyleSheet.create({
   },
 
   batchPill: {
-    backgroundColor: COLORS.blueSoft,
-    color: COLORS.primary,
-    fontSize: 11,
-    fontWeight: '900',
+    backgroundColor: DS.blueSoft,
+    color: DS.primary,
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 999,
+    borderRadius: RADIUS.pill,
     overflow: 'hidden',
   },
 
   typePill: {
-    backgroundColor: '#F1F5F9',
-    color: COLORS.textSecondary,
-    fontSize: 11,
-    fontWeight: '900',
+    backgroundColor: DS.surface,
+    color: DS.textSecondary,
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 999,
+    borderRadius: RADIUS.pill,
     overflow: 'hidden',
   },
 
   requestTime: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 6,
   },
 
   badge: {
-    backgroundColor: COLORS.orangeSoft,
-    borderRadius: 16,
+    backgroundColor: DS.orangeSoft,
+    borderRadius: RADIUS.pill,
     paddingHorizontal: 10,
     paddingVertical: 7,
     marginLeft: 8,
   },
 
   badgeText: {
-    color: COLORS.orange,
-    fontSize: 11,
-    fontWeight: '800',
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
+    color: DS.orangeText,
   },
 
   emptyBoxSmall: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
+    backgroundColor: DS.white,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     paddingVertical: 22,
     alignItems: 'center',
     marginBottom: 18,
   },
 
   emptyText: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '700',
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
 
   centerBox: {
@@ -470,26 +530,27 @@ const styles = StyleSheet.create({
   },
 
   infoText: {
+    ...TYPO.b3,
     marginTop: 12,
-    color: COLORS.textSecondary,
-    fontSize: 14,
+    color: DS.textSecondary,
   },
 
   errorText: {
-    color: '#DC2626',
-    fontSize: 14,
+    ...TYPO.b3,
+    color: DS.red,
     marginBottom: 12,
   },
 
   retryButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: DS.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
   },
 
   retryButtonText: {
-    color: COLORS.white,
-    fontWeight: '700',
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.white,
   },
 });

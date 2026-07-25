@@ -11,7 +11,7 @@ import {
 } from "react-native";
 
 import AppHeader from "../components/common/AppHeader";
-import { COLORS } from "../constants/colors";
+import { DS, TYPO, RADIUS, PALETTE, WEIGHT } from '../constants/designSystem';
 import api from "../services/api";
 
 export default function DeliveryDetailsScreen() {
@@ -42,7 +42,7 @@ export default function DeliveryDetailsScreen() {
     if (loading) {
         return (
             <View style={styles.loader}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
+                <ActivityIndicator size="large" color={DS.primary} />
             </View>
         );
     }
@@ -62,14 +62,14 @@ export default function DeliveryDetailsScreen() {
             <ScrollView contentContainerStyle={styles.content}>
                 <View style={styles.titleRow}>
                     <TouchableOpacity onPress={() => router.back()}>
-                        <Ionicons name="arrow-back" size={26} color={COLORS.textPrimary} />
+                        <Ionicons name="arrow-back" size={26} color={DS.textPrimary} />
                     </TouchableOpacity>
 
                     <Text style={styles.title}>Delivery Details</Text>
                 </View>
 
                 <View style={styles.statusBox}>
-                    <Ionicons name="checkmark-circle-outline" size={28} color={COLORS.green} />
+                    <Ionicons name="checkmark-circle-outline" size={28} color={DS.green} />
                     <View>
                         <Text style={styles.statusText}>Delivered</Text>
                         <Text style={styles.statusTime}>at 09:15 AM</Text>
@@ -118,7 +118,7 @@ function InfoCard({ title, icon, children, danger, orange }: any) {
                     <Ionicons
                         name={icon}
                         size={18}
-                        color={danger ? COLORS.orange : orange ? COLORS.orange : COLORS.primary}
+                        color={danger ? DS.red : orange ? DS.orange : DS.primary}
                     />
                 </View>
 
@@ -137,7 +137,7 @@ function InfoRow({ label, value, blue, green }: any) {
             <Text
                 style={[
                     styles.infoValue,
-                    blue && { color: COLORS.primary },
+                    blue && { color: DS.primary },
                     green && styles.greenBadge,
                 ]}
             >
@@ -150,7 +150,7 @@ function InfoRow({ label, value, blue, green }: any) {
 const styles = StyleSheet.create({
     screen: {
         flex: 1,
-        backgroundColor: "#F5F6FA",
+        backgroundColor: DS.background,
     },
 
     loader: {
@@ -172,15 +172,14 @@ const styles = StyleSheet.create({
     },
 
     title: {
-        fontSize: 22,
-        fontWeight: "900",
-        color: "#111827",
+        ...TYPO.h5,
+        color: DS.textPrimary,
         marginLeft: 16,
     },
 
     statusBox: {
-        backgroundColor: "#EAF7EE",
-        borderRadius: 18,
+        backgroundColor: DS.greenSoft,
+        borderRadius: RADIUS.lg,
         paddingVertical: 18,
         paddingHorizontal: 18,
         flexDirection: "row",
@@ -190,23 +189,22 @@ const styles = StyleSheet.create({
     },
 
     statusText: {
-        fontSize: 19,
-        fontWeight: "800",
-        color: "#16A34A",
+        ...TYPO.s1,
+        color: PALETTE.green600,
         marginBottom: 2,
     },
 
     statusTime: {
-        fontSize: 13,
-        color: "#6B7280",
+        ...TYPO.c1,
+        color: DS.textSecondary,
         marginTop: 2,
     },
 
     card: {
-        backgroundColor: "#FFFFFF",
-        borderRadius: 18,
+        backgroundColor: DS.card,
+        borderRadius: RADIUS.lg,
         borderWidth: 1,
-        borderColor: "#E5E7EB",
+        borderColor: DS.border,
         padding: 18,
         marginBottom: 18,
     },
@@ -220,25 +218,24 @@ const styles = StyleSheet.create({
     cardIcon: {
         width: 38,
         height: 38,
-        borderRadius: 12,
-        backgroundColor: "#EEF4FF",
+        borderRadius: RADIUS.md,
+        backgroundColor: DS.primarySoft,
         justifyContent: "center",
         alignItems: "center",
         marginRight: 12,
     },
 
     dangerIcon: {
-        backgroundColor: "#FFF1F2",
+        backgroundColor: DS.redSoft,
     },
 
     orangeIcon: {
-        backgroundColor: "#FFF7ED",
+        backgroundColor: DS.orangeSoft,
     },
 
     cardTitle: {
-        fontSize: 18,
-        fontWeight: "800",
-        color: "#111827",
+        ...TYPO.s1,
+        color: DS.textPrimary,
     },
 
     infoRow: {
@@ -246,34 +243,33 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
         alignItems: "center",
         borderBottomWidth: 1,
-        borderBottomColor: "#F1F5F9",
+        borderBottomColor: DS.divider,
         paddingVertical: 14,
     },
 
     infoLabel: {
-        fontSize: 15,
-        color: "#6B7280",
-        fontWeight: "500",
+        ...TYPO.b4,
+        color: DS.textSecondary,
         flex: 1,
     },
 
     infoValue: {
-        fontSize: 15,
-        color: "#111827",
-        fontWeight: "800",
+        ...TYPO.s2,
+        color: DS.textPrimary,
         flexShrink: 1,
         textAlign: "right",
     },
 
     greenBadge: {
-        backgroundColor: "#DCFCE7",
-        color: "#16A34A",
+        ...TYPO.c3,
+        fontWeight: WEIGHT.semibold,
+        letterSpacing: 0.4,
+        backgroundColor: DS.greenSoft,
+        color: PALETTE.green600,
         paddingHorizontal: 14,
         paddingVertical: 6,
-        borderRadius: 999,
+        borderRadius: RADIUS.pill,
         overflow: "hidden",
-        fontSize: 13,
-        fontWeight: "800",
         alignSelf: "flex-end",
         textAlign: "center",
         minWidth: 72,

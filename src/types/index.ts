@@ -1,9 +1,16 @@
 export type DriverStats = {
+  // Total the driver is holding for the period: freshly allocated plus any
+  // cylinders carried forward from previous days.
   allocated: number;
+  allocatedToday?: number;
+  carriedForward?: number;
   delivered: number;
-  collection: number;
+  pendingCollection: number;
   empties: number;
+  emptiesOriginal?: number;
   inHand: number;
+  inHandOriginal?: number;
+  systemStock?: number;
   newDelivery: number;
 };
 
@@ -205,4 +212,150 @@ export type ProductSearchItem = {
   type: 'DOMESTIC' | 'COMMERCIAL';
   price: number;
   categoryName: string;
+};
+
+export type PurchaseProduct = {
+  id: number;
+  name: string;
+  category: string;
+  type: 'DOMESTIC' | 'COMMERCIAL';
+};
+
+export type PurchaseBootstrap = {
+  manager: {
+    id: number;
+    name: string;
+    companyName?: string | null;
+    phone?: string | null;
+    vehicleLabel: string;
+  };
+  defaultStockArea: {
+    id: number;
+    name: string;
+  } | null;
+  products: {
+    domestic: PurchaseProduct[];
+    commercial: PurchaseProduct[];
+  };
+};
+
+export type PurchaseTripSummary = {
+  id: number;
+  status: 'IN_PROGRESS' | 'WAITING_APPROVAL' | 'APPROVED' | 'COMPLETED' | 'CANCELLED';
+  startKm: number;
+  startedAt: string;
+  endedAt?: string | null;
+  loadsCount: number;
+  totalCylinders: number;
+  expensesCount: number;
+  totalExpenses: number;
+};
+
+export type PurchaseLoadItem = {
+  productId: number;
+  name: string;
+  type: 'DOMESTIC' | 'COMMERCIAL';
+  category: string;
+  quantity: number;
+};
+
+export type PurchaseLoad = {
+  id: number;
+  tripId: number;
+  productType: 'DOMESTIC' | 'COMMERCIAL' | 'MIXED';
+  invoiceUrl?: string | null;
+  invoiceSource?: 'CAMERA' | 'GALLERY' | null;
+  totalQuantity: number;
+  itemsCount?: number;
+  status: 'DRAFT' | 'PENDING' | 'APPROVED' | 'CANCELLED';
+  tripStatus?: string;
+  createdAt: string;
+  items?: PurchaseLoadItem[];
+};
+
+export type PurchaseExpense = {
+  id: number;
+  tripId?: number;
+  category: string;
+  description?: string | null;
+  amount: number;
+  billUrl?: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  tripStatus?: string;
+  createdAt: string;
+};
+
+export type PurchaseTripOverview = {
+  id: number;
+  purchaseManagerId: number;
+  purchaseManagerName: string;
+  stockAreaId?: number | null;
+  stockAreaName?: string | null;
+  odometerReading: number;
+  endOdometerReading?: number | null;
+  odometerImageUrl?: string | null;
+  endOdometerImageUrl?: string | null;
+  status: 'IN_PROGRESS' | 'WAITING_APPROVAL' | 'APPROVED' | 'COMPLETED' | 'CANCELLED';
+  startedAt: string;
+  endedAt?: string | null;
+  loads: PurchaseLoad[];
+  expenses: PurchaseExpense[];
+};
+
+export type PurchaseDashboard = {
+  summary: {
+    pendingLoadApproval: number;
+    pendingExpenses: number;
+    completedTrips: number;
+  };
+  activeTrip: PurchaseTripOverview | null;
+  recentTrips: {
+    id: number;
+    loads: number;
+    expenses: number;
+    status: string;
+    startedAt: string;
+  }[];
+};
+export type EmptyCylinderLoadStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'COMPLETED';
+
+export type PurchaseManagerOption = {
+  id: number;
+  name: string;
+  phone: string;
+};
+
+export type EmptyCylinderLoad = {
+  id: number;
+  vehicleNumber: string;
+  ervNumber: string | null;
+  assignedBy: string;
+  status: EmptyCylinderLoadStatus;
+  statusLabel: string;
+  rejectReason: string | null;
+  invoiceUrl: string | null;
+  dispatchedAt: string | null;
+  acceptedAt: string | null;
+  completedAt: string | null;
+  totalQuantity: number;
+  domesticQuantity: number;
+  commercialQuantity: number;
+};
+
+export type EmptyCylinderLoadItem = {
+  productId: number;
+  name: string;
+  category: string;
+  categoryName: string;
+  quantity: number;
+};
+
+export type EmptyCylinderLoadDetail = EmptyCylinderLoad & {
+  purchaseManager: string;
+  domesticItems: EmptyCylinderLoadItem[];
+  commercialItems: EmptyCylinderLoadItem[];
 };

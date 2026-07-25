@@ -4,7 +4,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, EYEBROW, RADIUS, WEIGHT } from '../../constants/designSystem';
 
 const sales = [
   {
@@ -52,7 +52,7 @@ export default function GodownCashierSaleScreen() {
       <View style={styles.content}>
         <View style={styles.titleRow}>
           <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={24} color={DS.textPrimary} />
           </TouchableOpacity>
 
           <View>
@@ -63,30 +63,30 @@ export default function GodownCashierSaleScreen() {
 
         <View style={styles.totalCard}>
           <View style={styles.totalTop}>
-            <Ionicons name="receipt-outline" size={16} color={COLORS.white} />
+            <Ionicons name="receipt-outline" size={16} color={DS.white} />
             <Text style={styles.totalLabel}>TOTAL SALES</Text>
           </View>
 
           <Text style={styles.totalText}>7 orders</Text>
 
           <View style={styles.cylinderRow}>
-            <Ionicons name="cube-outline" size={14} color={COLORS.white} />
+            <Ionicons name="cube-outline" size={14} color={DS.white} />
             <Text style={styles.cylinderText}>11 cylinders</Text>
           </View>
         </View>
 
         <View style={styles.summaryRow}>
           <View style={styles.summaryCard}>
-            <View style={[styles.summaryIcon, { backgroundColor: COLORS.blueSoft }]}>
-              <Ionicons name="cube-outline" size={18} color={COLORS.primary} />
+            <View style={[styles.summaryIcon, { backgroundColor: DS.blueSoft }]}>
+              <Ionicons name="cube-outline" size={18} color={DS.primary} />
             </View>
             <Text style={styles.summaryLabel}>DOMESTIC</Text>
             <Text style={styles.summaryValue}>5 cylinders</Text>
           </View>
 
           <View style={styles.summaryCard}>
-            <View style={[styles.summaryIcon, { backgroundColor: COLORS.orangeSoft }]}>
-              <Ionicons name="cube-outline" size={18} color={COLORS.orange} />
+            <View style={[styles.summaryIcon, { backgroundColor: DS.orangeSoft }]}>
+              <Ionicons name="cube-outline" size={18} color={DS.orange} />
             </View>
             <Text style={styles.summaryLabel}>COMMERCIAL</Text>
             <Text style={styles.summaryValue}>6 cylinders</Text>
@@ -112,15 +112,15 @@ export default function GodownCashierSaleScreen() {
                     styles.avatar,
                     {
                       backgroundColor: commercial
-                        ? COLORS.orangeSoft
-                        : COLORS.blueSoft,
+                        ? DS.orangeSoft
+                        : DS.blueSoft,
                     },
                   ]}
                 >
                   <Ionicons
                     name="person-outline"
                     size={20}
-                    color={commercial ? COLORS.orange : COLORS.primary}
+                    color={commercial ? DS.orange : DS.primary}
                   />
                 </View>
 
@@ -132,8 +132,8 @@ export default function GodownCashierSaleScreen() {
                         styles.typeBadge,
                         {
                           backgroundColor: commercial
-                            ? COLORS.orangeSoft
-                            : COLORS.blueSoft,
+                            ? DS.orangeSoft
+                            : DS.blueSoft,
                         },
                       ]}
                     >
@@ -142,8 +142,8 @@ export default function GodownCashierSaleScreen() {
                           styles.typeText,
                           {
                             color: commercial
-                              ? COLORS.orange
-                              : COLORS.primary,
+                              ? DS.orange
+                              : DS.primary,
                           },
                         ]}
                       >
@@ -180,18 +180,17 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   pageTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
   pageSub: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 2,
   },
   totalCard: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 14,
+    backgroundColor: DS.primary,
+    borderRadius: RADIUS.lg,
     padding: 16,
     marginBottom: 14,
   },
@@ -202,15 +201,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   totalLabel: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.white,
+    ...EYEBROW,
+    color: DS.white,
     letterSpacing: 0.8,
   },
   totalText: {
-    fontSize: 30,
-    fontWeight: '900',
-    color: COLORS.white,
+    ...TYPO.h5,
+    color: DS.white,
     marginBottom: 8,
   },
   cylinderRow: {
@@ -219,9 +216,8 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   cylinderText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.white,
+    ...TYPO.c2,
+    color: DS.white,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -230,42 +226,39 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     padding: 14,
   },
   summaryIcon: {
     width: 30,
     height: 30,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   summaryLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textSecondary,
     marginBottom: 4,
   },
   summaryValue: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginBottom: 10,
   },
   salesCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     overflow: 'hidden',
   },
   saleRow: {
@@ -277,12 +270,12 @@ const styles = StyleSheet.create({
   },
   saleRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: DS.divider,
   },
   avatar: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -296,22 +289,22 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   customerName: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   typeBadge: {
     paddingHorizontal: 6,
     paddingVertical: 3,
-    borderRadius: 7,
+    borderRadius: RADIUS.sm,
   },
   typeText: {
-    fontSize: 10,
-    fontWeight: '900',
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
   },
   saleDetail: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 3,
   },
   qtyBox: {
@@ -319,13 +312,11 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   qty: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
   qtyLabel: {
-    fontSize: 10,
-    color: COLORS.textSecondary,
-    fontWeight: '800',
+    ...TYPO.c3,
+    color: DS.textSecondary,
   },
 });

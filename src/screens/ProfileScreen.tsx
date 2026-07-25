@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  DeviceEventEmitter,
   Modal,
   RefreshControl,
   StyleSheet,
@@ -15,11 +14,10 @@ import {
 
 import AppHeader from '../components/common/AppHeader';
 import ScreenContainer from '../components/common/ScreenContainer';
-import { APP_ROLE_KEY, APP_ROLES, AppRole } from '../constants/appRole';
-import { COLORS } from '../constants/colors';
+import { AUTH_TOKEN_KEY, AUTH_USER_KEY } from '../constants/auth';
+import { DS, TYPO, EYEBROW, RADIUS, PALETTE, WEIGHT } from '../constants/designSystem';
+import { useDateRange } from '../context/DateRangeContext';
 import api from '../services/api';
-
-const DRIVER_ID = 2;
 
 type DriverProfileDelivery = {
   saleId: number;
@@ -82,7 +80,7 @@ type BookingsResponse = {
 };
 
 type ProfileScreenProps = {
-  onRoleChange?: (role: AppRole) => void;
+  onRoleChange?: () => void;
 };
 
 const formatTime = (value?: string | null) => {
@@ -152,6 +150,8 @@ const getStatusLabel = (status: string) => {
 };
 
 export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
+  const { rangeKey } = useDateRange();
+  const [driverId, setDriverId] = useState<number | null>(null);
   const [screenMode, setScreenMode] = useState<'PROFILE' | 'BOOKINGS'>(
     'PROFILE'
   );
@@ -167,7 +167,6 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
-  const [selectedRole, setSelectedRole] = useState<AppRole>(APP_ROLES.DRIVER);
 
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<BookingItem | null>(
@@ -179,8 +178,13 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
     try {
       setError('');
 
+      if (!driverId) {
+        setError('Driver session not found');
+        return;
+      }
+
       const response = await api.get(
-        `/drivers/${DRIVER_ID}/profile-history?page=${pageNumber}&limit=4`
+        `/drivers/${driverId}/profile-history?page=${pageNumber}&limit=4`
       );
 
       if (response.data?.success) {
@@ -195,13 +199,17 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
       );
       setError('Failed to load profile history');
     }
-  }, []);
+  }, [driverId]);
 
   const fetchBookings = useCallback(async () => {
     try {
       setBookingsLoading(true);
 
-      const response = await api.get(`/drivers/${DRIVER_ID}/bookings`);
+      if (!driverId) {
+        return;
+      }
+
+      const response = await api.get(`/drivers/${driverId}/bookings`);
 
       if (response.data?.success) {
         setBookings({
@@ -214,47 +222,47 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
     } finally {
       setBookingsLoading(false);
     }
+  }, [driverId]);
+
+  useEffect(() => {
+    const loadDriverId = async () => {
+      try {
+        const userText = await AsyncStorage.getItem(AUTH_USER_KEY);
+        const user = userText ? JSON.parse(userText) : null;
+        const userId = Number(user?.id);
+
+        if (!Number.isNaN(userId) && userId > 0) {
+          setDriverId(userId);
+        } else {
+          setError('Driver session not found');
+        }
+      } catch {
+        setError('Driver session not found');
+      }
+    };
+
+    loadDriverId();
   }, []);
 
   useEffect(() => {
     const load = async () => {
+      if (!driverId) {
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       await Promise.all([fetchProfileHistory(page), fetchBookings()]);
       setLoading(false);
     };
 
     load();
-  }, [fetchProfileHistory, fetchBookings, page]);
+  }, [driverId, fetchProfileHistory, fetchBookings, page, rangeKey]);
 
-  useEffect(() => {
-    const loadRole = async () => {
-      const role = await AsyncStorage.getItem(APP_ROLE_KEY);
-
-      if (role === APP_ROLES.DRIVER || role === APP_ROLES.GODOWN_MANAGER) {
-        setSelectedRole(role);
-      } else {
-        setSelectedRole(APP_ROLES.DRIVER);
-      }
-    };
-
-    loadRole();
-  }, []);
-
-  const handleRoleChange = async (role: AppRole) => {
-    await AsyncStorage.setItem(APP_ROLE_KEY, role);
-    setSelectedRole(role);
-
-    DeviceEventEmitter.emit('APP_ROLE_CHANGED', role);
-
-    if (onRoleChange) {
-      onRoleChange(role);
-    }
-
-    if (role === APP_ROLES.GODOWN_MANAGER) {
-      router.replace('/godown-home');
-    } else {
-      router.replace('/');
-    }
+  const handleSignOut = async () => {
+    await AsyncStorage.multiRemove([AUTH_TOKEN_KEY, AUTH_USER_KEY]);
+    if (onRoleChange) onRoleChange();
+    router.replace('/login');
   };
 
   const onRefresh = async () => {
@@ -288,7 +296,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
       const response = await api.put(
         `/drivers/bookings/${selectedBooking.saleId}/cancel`,
         {
-          driver_id: DRIVER_ID,
+          driver_id: driverId,
         }
       );
 
@@ -322,7 +330,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
               <Ionicons
                 name="arrow-back"
                 size={28}
-                color={COLORS.textPrimary}
+                color={DS.textPrimary}
               />
             </TouchableOpacity>
 
@@ -334,7 +342,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
 
           {bookingsLoading ? (
             <View style={styles.centerBox}>
-              <ActivityIndicator size="large" color={COLORS.primary} />
+              <ActivityIndicator size="large" color={DS.primary} />
               <Text style={styles.infoText}>Loading bookings...</Text>
             </View>
           ) : bookings.items.length ? (
@@ -374,48 +382,13 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
       <AppHeader />
 
       <View style={styles.content}>
-        <View style={styles.roleSwitchWrap}>
-          <TouchableOpacity
-            style={[
-              styles.roleButton,
-              selectedRole === APP_ROLES.DRIVER && styles.roleButtonActive,
-            ]}
-            onPress={() => handleRoleChange(APP_ROLES.DRIVER)}
-          >
-            <Text
-              style={[
-                styles.roleButtonText,
-                selectedRole === APP_ROLES.DRIVER &&
-                  styles.roleButtonTextActive,
-              ]}
-            >
-              Driver
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.roleButton,
-              selectedRole === APP_ROLES.GODOWN_MANAGER &&
-                styles.roleButtonActive,
-            ]}
-            onPress={() => handleRoleChange(APP_ROLES.GODOWN_MANAGER)}
-          >
-            <Text
-              style={[
-                styles.roleButtonText,
-                selectedRole === APP_ROLES.GODOWN_MANAGER &&
-                  styles.roleButtonTextActive,
-              ]}
-            >
-              Godown Manager
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+          <Text style={styles.signOutButtonText}>Sign Out</Text>
+        </TouchableOpacity>
 
         {loading ? (
           <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <ActivityIndicator size="large" color={DS.primary} />
             <Text style={styles.infoText}>Loading profile history...</Text>
           </View>
         ) : error ? (
@@ -440,7 +413,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                   <Ionicons
                     name="call-outline"
                     size={18}
-                    color={COLORS.textSecondary}
+                    color={DS.textSecondary}
                   />
                   <Text style={styles.profileMeta}>
                     {data?.driver?.phone || 'N/A'}
@@ -451,7 +424,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                   <Ionicons
                     name="car-outline"
                     size={18}
-                    color={COLORS.textSecondary}
+                    color={DS.textSecondary}
                   />
                   <Text style={styles.profileMeta}>
                     {data?.driver?.vehicleNumber || 'N/A'}
@@ -467,24 +440,24 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                 icon="checkmark-circle-outline"
                 label="Today"
                 value={data?.performance?.today ?? 0}
-                color={COLORS.green}
-                bg={COLORS.greenSoft}
+                color={PALETTE.green600}
+                bg={DS.greenSoft}
               />
 
               <PerformanceRow
                 icon="calendar-outline"
                 label="This Week"
                 value={data?.performance?.thisWeek ?? 0}
-                color={COLORS.primary}
-                bg={COLORS.blueSoft}
+                color={DS.primary}
+                bg={DS.primarySoft}
               />
 
               <PerformanceRow
                 icon="trophy-outline"
                 label="Total"
                 value={data?.performance?.total ?? 0}
-                color={COLORS.orange}
-                bg={COLORS.orangeSoft}
+                color={DS.orangeText}
+                bg={DS.orangeSoft}
               />
             </View>
 
@@ -498,7 +471,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                   <Ionicons
                     name="clipboard-outline"
                     size={30}
-                    color={COLORS.primary}
+                    color={DS.primary}
                   />
                 </View>
 
@@ -515,7 +488,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                 <Ionicons
                   name="chevron-forward"
                   size={26}
-                  color={COLORS.textSecondary}
+                  color={DS.textSecondary}
                 />
               </View>
             </TouchableOpacity>
@@ -530,7 +503,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                       <Ionicons
                         name="calendar-outline"
                         size={18}
-                        color={COLORS.textSecondary}
+                        color={DS.textSecondary}
                       />
                       <Text style={styles.dayDateText}>
                         {formatDateLabel(dayItem.date)}
@@ -559,8 +532,8 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                               styles.iconWrap,
                               {
                                 backgroundColor: isCommercial
-                                  ? COLORS.orangeSoft
-                                  : COLORS.blueSoft,
+                                  ? DS.orangeSoft
+                                  : DS.primarySoft,
                               },
                             ]}
                           >
@@ -568,7 +541,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                               name="cube-outline"
                               size={20}
                               color={
-                                isCommercial ? COLORS.orange : COLORS.primary
+                                isCommercial ? DS.orange : DS.primary
                               }
                             />
                           </View>
@@ -645,7 +618,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                 <Ionicons
                   name="chevron-back"
                   size={18}
-                  color={COLORS.textSecondary}
+                  color={DS.textSecondary}
                 />
                 <Text style={styles.pageButtonText}>Newer</Text>
               </TouchableOpacity>
@@ -667,7 +640,7 @@ export default function ProfileScreen({ onRoleChange }: ProfileScreenProps) {
                 <Ionicons
                   name="chevron-forward"
                   size={18}
-                  color={COLORS.textSecondary}
+                  color={DS.textSecondary}
                 />
               </TouchableOpacity>
             </View>
@@ -696,14 +669,14 @@ function BookingCard({
           style={[
             styles.bookingIcon,
             {
-              backgroundColor: isCommercial ? COLORS.greenSoft : COLORS.blueSoft,
+              backgroundColor: isCommercial ? DS.greenSoft : DS.primarySoft,
             },
           ]}
         >
           <Ionicons
             name="cube-outline"
             size={24}
-            color={isCommercial ? COLORS.green : COLORS.primary}
+            color={isCommercial ? DS.green : DS.primary}
           />
         </View>
 
@@ -716,7 +689,7 @@ function BookingCard({
             <Ionicons
               name="location-outline"
               size={16}
-              color={COLORS.textSecondary}
+              color={DS.textSecondary}
             />
             <Text style={styles.bookingAddress} numberOfLines={1}>
               {item.address}
@@ -799,7 +772,7 @@ function CancelBookingModal({
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color={COLORS.white} />
+              <ActivityIndicator color={DS.white} />
             ) : (
               <Text style={styles.cancelConfirmText}>Yes, Cancel</Text>
             )}
@@ -854,41 +827,59 @@ const styles = StyleSheet.create({
 
   roleSwitchWrap: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
     marginBottom: 18,
   },
+  signOutButton: {
+    minHeight: 42,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: PALETTE.red100,
+    backgroundColor: DS.redSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  signOutButtonText: {
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.red,
+  },
 
   roleButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '30%',
     height: 54,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   roleButtonActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.blueSoft,
+    borderColor: DS.primary,
+    backgroundColor: DS.primarySoft,
   },
 
   roleButtonText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textSecondary,
+    textAlign: 'center',
   },
 
   roleButtonTextActive: {
-    color: COLORS.primary,
+    color: DS.primary,
   },
 
   profileCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
+    backgroundColor: DS.card,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
@@ -898,17 +889,16 @@ const styles = StyleSheet.create({
   profileAvatar: {
     width: 74,
     height: 74,
-    borderRadius: 24,
-    backgroundColor: COLORS.blueSoft,
+    borderRadius: RADIUS.xxl,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 18,
   },
 
   profileInitials: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.primary,
+    ...TYPO.s1,
+    color: DS.primary,
   },
 
   profileInfo: {
@@ -916,9 +906,8 @@ const styles = StyleSheet.create({
   },
 
   profileName: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
     marginBottom: 6,
   },
 
@@ -930,17 +919,14 @@ const styles = StyleSheet.create({
   },
 
   profileMeta: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
 
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    color: DS.textTertiary,
     marginBottom: 12,
-    textTransform: 'uppercase',
   },
 
   performanceWrapVertical: {
@@ -950,10 +936,10 @@ const styles = StyleSheet.create({
 
   performanceRowCard: {
     height: 76,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
@@ -975,21 +961,19 @@ const styles = StyleSheet.create({
   },
 
   performanceRowLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
 
   performanceRowValue: {
-    fontSize: 26,
-    fontWeight: '900',
+    ...TYPO.h5,
   },
 
   myBookingsCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 18,
     marginBottom: 26,
     flexDirection: 'row',
@@ -1007,22 +991,20 @@ const styles = StyleSheet.create({
   myBookingIcon: {
     width: 64,
     height: 64,
-    borderRadius: 18,
-    backgroundColor: COLORS.blueSoft,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   myBookingTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   myBookingSub: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    color: DS.textSecondary,
     marginTop: 3,
   },
 
@@ -1033,16 +1015,15 @@ const styles = StyleSheet.create({
   },
 
   myBookingCount: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.primary,
+    ...TYPO.h5,
+    color: DS.primary,
   },
 
   dayCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 14,
     marginBottom: 14,
   },
@@ -1062,9 +1043,8 @@ const styles = StyleSheet.create({
   },
 
   dayDateText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
 
   dayRight: {
@@ -1072,21 +1052,19 @@ const styles = StyleSheet.create({
   },
 
   dayAmount: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.primary,
+    ...TYPO.s1,
+    color: DS.primary,
   },
 
   dayDeliveries: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c2,
+    color: DS.textSecondary,
     marginTop: 2,
-    fontWeight: '600',
   },
 
   deliveryRow: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
+    backgroundColor: DS.surface,
+    borderRadius: RADIUS.md,
     padding: 12,
     marginBottom: 10,
     flexDirection: 'row',
@@ -1107,29 +1085,26 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 38,
     height: 38,
-    borderRadius: 14,
+    borderRadius: RADIUS.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
 
   customerName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
 
   metaText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c2,
+    color: DS.textSecondary,
     marginTop: 2,
-    fontWeight: '500',
   },
 
   subMetaText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c2,
+    color: DS.textSecondary,
     marginTop: 2,
-    fontWeight: '600',
   },
 
   rowRight: {
@@ -1138,63 +1113,62 @@ const styles = StyleSheet.create({
   },
 
   amountText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
     marginBottom: 6,
   },
 
   paymentBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
   },
 
   paymentBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
+    ...TYPO.c2,
+    fontWeight: WEIGHT.semibold,
   },
 
   cashBadge: {
-    backgroundColor: COLORS.greenSoft,
+    backgroundColor: DS.greenSoft,
   },
 
   cashText: {
-    color: COLORS.green,
+    color: PALETTE.green600,
   },
 
   upiBadge: {
-    backgroundColor: COLORS.blueSoft,
+    backgroundColor: DS.primarySoft,
   },
 
   upiText: {
-    color: COLORS.primary,
+    color: DS.primary,
   },
 
   onlineBadge: {
-    backgroundColor: COLORS.orangeSoft,
+    backgroundColor: DS.orangeSoft,
   },
 
   onlineText: {
-    color: COLORS.orange,
+    color: DS.orangeText,
   },
 
   creditBadge: {
-    backgroundColor: COLORS.orangeSoft,
+    backgroundColor: DS.orangeSoft,
   },
 
   creditText: {
-    color: COLORS.orange,
+    color: DS.orangeText,
   },
 
   paginationWrap: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 12,
     marginTop: 4,
   },
@@ -1202,8 +1176,8 @@ const styles = StyleSheet.create({
   pageButton: {
     minWidth: 84,
     height: 40,
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
+    borderRadius: RADIUS.md,
+    backgroundColor: DS.surface,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1215,15 +1189,15 @@ const styles = StyleSheet.create({
   },
 
   pageButtonText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textSecondary,
   },
 
   pageIndicator: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textSecondary,
   },
 
   bookingHeaderRow: {
@@ -1236,32 +1210,30 @@ const styles = StyleSheet.create({
   backSquare: {
     width: 70,
     height: 70,
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
   },
 
   bookingPageTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
 
   bookingCount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b2,
+    color: DS.textSecondary,
     marginTop: 3,
   },
 
   bookingCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     padding: 18,
     marginBottom: 14,
   },
@@ -1274,7 +1246,7 @@ const styles = StyleSheet.create({
   bookingIcon: {
     width: 58,
     height: 58,
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -1285,9 +1257,8 @@ const styles = StyleSheet.create({
   },
 
   bookingName: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   bookingAddressRow: {
@@ -1298,16 +1269,15 @@ const styles = StyleSheet.create({
   },
 
   bookingAddress: {
+    ...TYPO.b4,
     flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    color: DS.textSecondary,
   },
 
   bookingProduct: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
     marginTop: 12,
   },
 
@@ -1319,133 +1289,126 @@ const styles = StyleSheet.create({
   bookingStatusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: 999,
+    borderRadius: RADIUS.pill,
     marginBottom: 24,
   },
 
   bookingStatusText: {
-    fontSize: 13,
-    fontWeight: '900',
+    ...TYPO.c2,
+    fontWeight: WEIGHT.semibold,
   },
 
   pendingBadge: {
-    backgroundColor: COLORS.orangeSoft,
+    backgroundColor: DS.orangeSoft,
   },
 
   pendingText: {
-    color: COLORS.orange,
+    color: DS.orangeText,
   },
 
   deliveredBadge: {
-    backgroundColor: COLORS.greenSoft,
+    backgroundColor: DS.greenSoft,
   },
 
   deliveredText: {
-    color: COLORS.green,
+    color: PALETTE.green600,
   },
 
   cancelledBadge: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: DS.redSoft,
   },
 
   cancelledText: {
-    color: '#EF4444',
+    color: DS.red,
   },
 
   bookingAmount: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.primary,
+    ...TYPO.s1,
+    color: DS.primary,
   },
 
   cancelBookingButton: {
     height: 62,
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: '#FCA5A5',
+    borderColor: PALETTE.red100,
+    backgroundColor: DS.redSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 20,
   },
 
   cancelBookingText: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#EF4444',
+    ...TYPO.s2,
+    color: DS.red,
   },
 
   cancelOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: 'rgba(11,13,18,0.55)',
     justifyContent: 'center',
   },
 
   cancelModalBox: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     padding: 28,
   },
 
   cancelTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
     textAlign: 'center',
   },
 
   cancelDescription: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    ...TYPO.b1,
+    color: DS.textSecondary,
     textAlign: 'center',
-    lineHeight: 28,
     marginTop: 20,
     marginBottom: 28,
   },
 
   cancelConfirmButton: {
-    height: 74,
-    borderRadius: 16,
-    backgroundColor: '#E05252',
+    height: 56,
+    borderRadius: RADIUS.lg,
+    backgroundColor: DS.red,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
   },
 
   cancelConfirmText: {
-    color: COLORS.white,
-    fontSize: 20,
-    fontWeight: '900',
+    ...TYPO.s1,
+    color: DS.white,
   },
 
   keepBookingButton: {
-    height: 74,
-    borderRadius: 16,
+    height: 56,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   keepBookingText: {
-    color: COLORS.textPrimary,
-    fontSize: 20,
-    fontWeight: '900',
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
 
   emptyBox: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     paddingVertical: 30,
     alignItems: 'center',
     marginBottom: 16,
   },
 
   emptyText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    color: DS.textSecondary,
   },
 
   centerBox: {
@@ -1455,13 +1418,13 @@ const styles = StyleSheet.create({
   },
 
   infoText: {
+    ...TYPO.b3,
     marginTop: 10,
-    color: COLORS.textSecondary,
-    fontSize: 13,
+    color: DS.textSecondary,
   },
 
   errorText: {
-    color: '#DC2626',
-    fontSize: 13,
+    ...TYPO.b3,
+    color: DS.red,
   },
 });

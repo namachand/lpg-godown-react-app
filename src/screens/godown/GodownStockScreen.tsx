@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   DeviceEventEmitter,
@@ -12,7 +12,8 @@ import {
 
 import AppHeader from '../../components/common/AppHeader';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, EYEBROW, RADIUS, PALETTE, WEIGHT } from '../../constants/designSystem';
+import { useDateRange } from '../../context/DateRangeContext';
 import {
   getDefectiveLoads,
   getStockInLoads,
@@ -24,6 +25,7 @@ type DefectiveFilter = 'ALL' | 'DEPOT' | 'GODOWN' | 'DELIVERY';
 
 export default function GodownStockScreen() {
   const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const { rangeKey } = useDateRange();
 
   const [activeTab, setActiveTab] = useState<StockTab>('in');
 
@@ -133,6 +135,12 @@ export default function GodownStockScreen() {
     }, [tab])
   );
 
+  useEffect(() => {
+    fetchStockInLoads();
+    fetchStockOutLoads();
+    fetchDefectiveLoads();
+  }, [rangeKey]);
+
   const todayStockIn = stockIn.filter(
     (item) => getDateLabel(item.date) === 'TODAY'
   );
@@ -186,7 +194,7 @@ export default function GodownStockScreen() {
 
           {stockInLoading ? (
             <View style={styles.loaderBox}>
-              <ActivityIndicator color={COLORS.primary} />
+              <ActivityIndicator color={DS.primary} />
             </View>
           ) : (
             <>
@@ -255,14 +263,14 @@ export default function GodownStockScreen() {
               style={styles.greenButton}
               onPress={() => router.push('/new-dispatch' as any)}
             >
-              <Ionicons name="add" size={22} color={COLORS.white} />
+              <Ionicons name="add" size={22} color={DS.white} />
               <Text style={styles.greenButtonText}>New Dispatch</Text>
             </TouchableOpacity>
           </View>
 
           {stockOutLoading ? (
             <View style={styles.loaderBox}>
-              <ActivityIndicator color={COLORS.primary} />
+              <ActivityIndicator color={DS.primary} />
             </View>
           ) : (
             <>
@@ -302,7 +310,7 @@ export default function GodownStockScreen() {
               style={styles.greenButton}
               onPress={() => router.push('/new-defective' as any)}
             >
-              <Ionicons name="add" size={22} color={COLORS.white} />
+              <Ionicons name="add" size={22} color={DS.white} />
               <Text style={styles.greenButtonText}>New Defective</Text>
             </TouchableOpacity>
           </View>
@@ -311,24 +319,24 @@ export default function GodownStockScreen() {
             <StatBox
               value={String(defectiveSummary.depot)}
               label="DEPOT"
-              color={COLORS.primary}
-              bg={COLORS.blueSoft}
+              color={DS.primary}
+              bg={DS.blueSoft}
               icon="car-outline"
             />
 
             <StatBox
               value={String(defectiveSummary.godown)}
               label="GODOWN"
-              color={COLORS.orange}
-              bg={COLORS.orangeSoft}
+              color={DS.orange}
+              bg={DS.orangeSoft}
               icon="business-outline"
             />
 
             <StatBox
               value={String(defectiveSummary.delivery)}
               label="DELIVERY"
-              color={COLORS.green}
-              bg={COLORS.greenSoft}
+              color={DS.green}
+              bg={DS.greenSoft}
               icon="bicycle-outline"
             />
           </View>
@@ -363,7 +371,7 @@ export default function GodownStockScreen() {
 
           {defectiveLoading ? (
             <View style={styles.loaderBox}>
-              <ActivityIndicator color={COLORS.primary} />
+              <ActivityIndicator color={DS.primary} />
             </View>
           ) : (
             <>
@@ -372,8 +380,11 @@ export default function GodownStockScreen() {
                 count={`${filteredDefectives.length} entries`}
               />
 
-              {filteredDefectives.map((item) => (
-                <View key={item.id} style={styles.defectiveCard}>
+              {filteredDefectives.map((item, index) => (
+                <View
+                  key={`${item.id}-${item.type}-${item.time || ''}-${index}`}
+                  style={styles.defectiveCard}
+                >
                   <View style={styles.defectiveTop}>
                     <View
                       style={[
@@ -417,7 +428,7 @@ export default function GodownStockScreen() {
                       <Ionicons
                         name="person-outline"
                         size={16}
-                        color={COLORS.textSecondary}
+                        color={DS.textSecondary}
                       />
                       <Text style={styles.footerText}>{item.person}</Text>
                     </View>
@@ -426,7 +437,7 @@ export default function GodownStockScreen() {
                       <Ionicons
                         name="time-outline"
                         size={16}
-                        color={COLORS.textSecondary}
+                        color={DS.textSecondary}
                       />
                       <Text style={styles.footerText}>{item.time}</Text>
                     </View>
@@ -460,7 +471,7 @@ function TopTab({
       <Ionicons
         name={icon}
         size={15}
-        color={active ? COLORS.primary : COLORS.textSecondary}
+        color={active ? DS.primary : DS.textSecondary}
       />
       <Text style={[styles.topTabText, active && styles.topTabTextActive]}>
         {title}
@@ -500,7 +511,7 @@ function LoadCard({
       <View style={styles.loadTop}>
         <View style={styles.loadLeft}>
           <View style={styles.loadIconBox}>
-            <Ionicons name="car-outline" size={22} color={COLORS.primary} />
+            <Ionicons name="car-outline" size={22} color={DS.primary} />
           </View>
 
           <View style={{ flex: 1 }}>
@@ -536,7 +547,7 @@ function LoadCard({
           <Ionicons
             name="person-outline"
             size={13}
-            color={COLORS.textSecondary}
+            color={DS.textSecondary}
           />
           <Text style={styles.cardFooterText}>{item.driver}</Text>
         </View>
@@ -545,7 +556,7 @@ function LoadCard({
           <Ionicons
             name="document-text-outline"
             size={13}
-            color={COLORS.textSecondary}
+            color={DS.textSecondary}
           />
           <Text style={styles.cardFooterText}>{item.invoice}</Text>
         </View>
@@ -659,15 +670,15 @@ const groupLoadsByDate = (loads: any[]) => {
 };
 
 const getDefectiveColor = (type: string) => {
-  if (type === 'depot') return COLORS.primary;
-  if (type === 'delivery') return COLORS.green;
-  return COLORS.orange;
+  if (type === 'depot') return DS.primary;
+  if (type === 'delivery') return DS.green;
+  return DS.orange;
 };
 
 const getDefectiveBg = (type: string) => {
-  if (type === 'depot') return COLORS.blueSoft;
-  if (type === 'delivery') return COLORS.greenSoft;
-  return COLORS.orangeSoft;
+  if (type === 'depot') return DS.blueSoft;
+  if (type === 'delivery') return DS.greenSoft;
+  return DS.orangeSoft;
 };
 
 const getDefectiveIcon = (type: string) => {
@@ -679,9 +690,9 @@ const getDefectiveIcon = (type: string) => {
 const styles = StyleSheet.create({
   tabRow: {
     flexDirection: 'row',
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.white,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DS.border,
   },
   topTab: {
     flex: 1,
@@ -694,15 +705,15 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   topTabActive: {
-    borderBottomColor: COLORS.primary,
+    borderBottomColor: DS.primary,
   },
   topTabText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textSecondary,
   },
   topTabTextActive: {
-    color: COLORS.primary,
+    color: DS.primary,
   },
   content: {
     padding: 16,
@@ -725,33 +736,29 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   heading: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
-    lineHeight: 28,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
   subHeading: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 4,
     marginBottom: 14,
   },
   greenButton: {
-    height: 56,
+    height: 48,
     minWidth: 150,
     paddingHorizontal: 16,
-    backgroundColor: COLORS.green,
-    borderRadius: 14,
+    backgroundColor: DS.buttonGreen,
+    borderRadius: RADIUS.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
   greenButtonText: {
-    color: COLORS.white,
-    fontWeight: '900',
-    fontSize: 16,
+    ...TYPO.s2,
+    color: DS.white,
   },
   dateHeader: {
     flexDirection: 'row',
@@ -760,25 +767,25 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   dateTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    letterSpacing: 0.6,
+    color: DS.textSecondary,
   },
   dateLine: {
     flex: 1,
     height: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: DS.border,
     marginHorizontal: 8,
   },
   dateCount: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
   },
   loadCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
+    borderColor: DS.border,
+    borderRadius: RADIUS.md,
     marginBottom: 10,
     overflow: 'hidden',
   },
@@ -795,8 +802,8 @@ const styles = StyleSheet.create({
   loadIconBox: {
     width: 38,
     height: 38,
-    borderRadius: 11,
-    backgroundColor: COLORS.blueSoft,
+    borderRadius: RADIUS.md,
+    backgroundColor: DS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -807,62 +814,60 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   loadTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   vehicleText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    ...TYPO.c1,
+    color: DS.textSecondary,
     marginTop: 3,
   },
   statusBadge: {
-    fontSize: 10,
-    fontWeight: '900',
+    ...TYPO.c3,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.4,
     paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
     overflow: 'hidden',
   },
   pendingBadge: {
-    color: '#EF4444',
-    backgroundColor: '#FEE2E2',
+    color: DS.orangeText,
+    backgroundColor: DS.orangeSoft,
   },
   approvedBadge: {
-    color: COLORS.green,
-    backgroundColor: COLORS.greenSoft,
+    color: PALETTE.green600,
+    backgroundColor: DS.greenSoft,
   },
   cancelledBadge: {
-    color: '#EF4444',
-    backgroundColor: '#FEE2E2',
+    color: DS.red,
+    backgroundColor: DS.redSoft,
   },
   qtyBox: {
     alignItems: 'center',
     marginLeft: 8,
   },
   qtyText: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
   loadUnit: {
+    ...EYEBROW,
     fontSize: 9,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
     letterSpacing: 0.8,
+    color: DS.textSecondary,
   },
   cardFooter: {
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: DS.divider,
     paddingHorizontal: 14,
     paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   cardFooterText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.c2,
+    color: DS.textPrimary,
   },
   defectiveStats: {
     flexDirection: 'row',
@@ -872,27 +877,27 @@ const styles = StyleSheet.create({
   statBox: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     padding: 12,
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
   },
   statIcon: {
     width: 28,
     height: 28,
-    borderRadius: 9,
+    borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
   },
   statValue: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.h5,
+    color: DS.textPrimary,
   },
   statLabel: {
+    ...EYEBROW,
     fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    letterSpacing: 0.5,
+    color: DS.textSecondary,
   },
   filterRow: {
     flexDirection: 'row',
@@ -902,28 +907,27 @@ const styles = StyleSheet.create({
   filterPill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.pill,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
   },
   filterPillActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: DS.primary,
+    borderColor: DS.primary,
   },
   filterText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.c2,
+    color: DS.textSecondary,
   },
   filterTextActive: {
-    color: COLORS.white,
+    color: DS.white,
   },
   defectiveCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: DS.card,
     borderWidth: 1,
-    borderColor: '#DDE5F0',
-    borderRadius: 16,
+    borderColor: DS.border,
+    borderRadius: RADIUS.lg,
     marginBottom: 14,
     overflow: 'hidden',
   },
@@ -938,7 +942,7 @@ const styles = StyleSheet.create({
   defectiveIconBox: {
     width: 46,
     height: 46,
-    borderRadius: 14,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -948,26 +952,24 @@ const styles = StyleSheet.create({
     paddingRight: 72,
   },
   defectiveTag: {
+    ...TYPO.c2,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.3,
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 14,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
     overflow: 'hidden',
-    fontSize: 11,
-    fontWeight: '900',
     marginBottom: 8,
   },
   defectiveTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
-    lineHeight: 22,
+    ...TYPO.s1,
+    color: DS.textPrimary,
   },
   defectiveDesc: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    lineHeight: 19,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 4,
   },
   defectiveQtyBox: {
@@ -977,21 +979,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   defectiveQty: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#EF4444',
-    lineHeight: 31,
+    ...TYPO.h4,
+    color: DS.red,
   },
   defectiveQtyLabel: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.textSecondary,
+    ...EYEBROW,
+    fontSize: 10,
+    color: DS.textSecondary,
     letterSpacing: 1,
     marginTop: 2,
   },
   defectiveFooter: {
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: DS.border,
     paddingHorizontal: 18,
     paddingVertical: 14,
     flexDirection: 'row',
@@ -1004,8 +1004,8 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   footerText: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
+    ...TYPO.b4,
+    fontWeight: WEIGHT.semibold,
+    color: DS.textPrimary,
   },
 });

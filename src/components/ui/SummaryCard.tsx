@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { COLORS } from '../../constants/colors';
+import { DS, TYPO, RADIUS } from '../../constants/designSystem';
 
 type Props = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -63,7 +63,7 @@ export default function SummaryCard({
         disabled={loading}
       >
         {loading ? (
-          <ActivityIndicator color={COLORS.white} />
+          <ActivityIndicator color={DS.white} />
         ) : (
           <Text style={styles.buttonText}>{buttonText}</Text>
         )}
@@ -74,10 +74,10 @@ export default function SummaryCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
+    backgroundColor: DS.card,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DS.border,
     padding: 16,
     marginBottom: 16,
   },
@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 32,
     height: 32,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -98,14 +98,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   amount: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    ...TYPO.s1,
+    color: DS.textPrimary,
     marginTop: 2,
   },
   infoRow: {
@@ -114,23 +112,21 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   customer: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    ...TYPO.b2,
+    color: DS.textPrimary,
   },
   time: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    ...TYPO.b3,
+    color: DS.textSecondary,
     marginTop: 4,
   },
   rightAmount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    ...TYPO.s2,
+    color: DS.textPrimary,
   },
   button: {
     height: 48,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -138,8 +134,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
+    ...TYPO.s2,
+    color: DS.white,
   },
 });
