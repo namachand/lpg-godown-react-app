@@ -239,8 +239,14 @@ export type PurchaseBootstrap = {
   };
 };
 
+// A trip is either the standard cylinder purchase run or the empty-cylinder
+// return run started from a godown dispatch. Both come from the same endpoints.
+export type PurchaseTripType = 'CYLINDER' | 'EMPTY';
+
 export type PurchaseTripSummary = {
   id: number;
+  tripType: PurchaseTripType;
+  emptyLoadId?: number | null;
   status: 'IN_PROGRESS' | 'WAITING_APPROVAL' | 'APPROVED' | 'COMPLETED' | 'CANCELLED';
   startKm: number;
   startedAt: string;
@@ -285,8 +291,28 @@ export type PurchaseExpense = {
   createdAt: string;
 };
 
+// Dispatch summary carried by an empty-cylinder trip, in place of the
+// purchase_loads a cylinder trip would have.
+export type PurchaseTripEmptyLoad = {
+  id: number;
+  vehicleNumber: string;
+  ervNumber: string | null;
+  assignedBy: string;
+  status: EmptyCylinderLoadStatus;
+  invoiceUrl: string | null;
+  dispatchedAt: string | null;
+  acceptedAt: string | null;
+  completedAt: string | null;
+  totalQuantity: number;
+  domesticQuantity: number;
+  commercialQuantity: number;
+};
+
 export type PurchaseTripOverview = {
   id: number;
+  tripType: PurchaseTripType;
+  emptyLoadId?: number | null;
+  emptyLoad?: PurchaseTripEmptyLoad | null;
   purchaseManagerId: number;
   purchaseManagerName: string;
   stockAreaId?: number | null;

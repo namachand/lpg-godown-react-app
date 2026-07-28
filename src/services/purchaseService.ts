@@ -62,6 +62,46 @@ export const startPurchaseTrip = async (payload: {
   return res.data.data;
 };
 
+// The trip started for a godown empty dispatch, or null if none yet.
+export const getEmptyCylinderLoadTrip = async (loadId: string | number) => {
+  const res = await api.get<{ success: boolean; data: PurchaseTripOverview | null }>(
+    `/purchase/trips/empty/${loadId}`
+  );
+  return res.data.data;
+};
+
+// Starts the trip that carries an accepted godown empty-cylinder dispatch out.
+// Mirrors startPurchaseTrip; the load replaces the trip's purchase loads.
+export const startEmptyCylinderTrip = async (payload: {
+  userId: number;
+  emptyLoadId: number;
+  odometerReading: number;
+  odometerImageUrl: string | null;
+}) => {
+  const res = await api.post<{ success: boolean; data: PurchaseTripOverview }>(
+    '/purchase/trips/start-empty',
+    payload
+  );
+  return res.data.data;
+};
+
+// Closes an empty-cylinder trip. No approval gate: this completes the trip and
+// its underlying godown load together, so the IOC invoice is captured here.
+export const submitEmptyCylinderTrip = async (
+  tripId: string | number,
+  payload: {
+    endOdometerImageUrl: string;
+    endOdometerReading: number;
+    invoiceUrl?: string | null;
+  }
+) => {
+  const res = await api.put<{ success: boolean; data: PurchaseTripOverview }>(
+    `/purchase/trips/${tripId}/submit-empty`,
+    payload
+  );
+  return res.data.data;
+};
+
 export const getActivePurchaseTrip = async (userId: number) => {
   const res = await api.get<{ success: boolean; data: PurchaseTripOverview | null }>(
     '/purchase/trips/active',

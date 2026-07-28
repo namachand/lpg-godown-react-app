@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { isAxiosError } from 'axios';
-import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -23,12 +22,17 @@ import { DS, TYPO, EYEBROW, RADIUS, PALETTE, WEIGHT } from '../../constants/desi
 import { API_SERVER_ROOT } from '../../services/api';
 import {
   acceptEmptyCylinderLoad,
-  completeEmptyCylinderLoad,
   getEmptyCylinderLoadDetail,
   rejectEmptyCylinderLoad,
-  uploadEmptyLoadInvoice,
 } from '../../services/emptyCylinderLoadService';
-import type { EmptyCylinderLoadDetail, EmptyCylinderLoadItem } from '../../types';
+import { getEmptyCylinderLoadTrip } from '../../services/purchaseService';
+import type {
+  EmptyCylinderLoadDetail,
+  EmptyCylinderLoadItem,
+  PurchaseTripOverview,
+} from '../../types';
+
+const formatCurrency = (value: number) => `₹${value.toLocaleString('en-IN')}`;
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-';
@@ -51,13 +55,13 @@ export default function PurchaseEmptyLoadDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [load, setLoad] = useState<EmptyCylinderLoadDetail | null>(null);
+  const [trip, setTrip] = useState<PurchaseTripOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [rejectVisible, setRejectVisible] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
-  const [invoiceUri, setInvoiceUri] = useState<string | null>(null);
 
   const fetchDetail = async (withRefresh = false) => {
     try {
@@ -67,9 +71,12 @@ export default function PurchaseEmptyLoadDetailScreen() {
         setLoading(true);
       }
 
-      const data = await getEmptyCylinderLoadDetail(id);
+      const [data, tripData] = await Promise.all([
+        getEmptyCylinderLoadDetail(id),
+        getEmptyCylinderLoadTrip(id),
+      ]);
       setLoad(data);
-      setInvoiceUri(data.invoiceUrl ?? null);
+      setTrip(tripData);
     } catch (error) {
       console.log('Empty load detail error:', error);
     } finally {
@@ -80,6 +87,13 @@ export default function PurchaseEmptyLoadDetailScreen() {
 
   useEffect(() => {
     fetchDetail();
+
+    // The expense screen and the trip screens emit this after every change.
+    const subscription = DeviceEventEmitter.addListener('PURCHASE_FLOW_UPDATED', () =>
+      fetchDetail(true)
+    );
+
+    return () => subscription.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -128,52 +142,24 @@ export default function PurchaseEmptyLoadDetailScreen() {
     }
   };
 
-  const handlePickInvoice = async (source: 'camera' | 'gallery') => {
-    try {
-      const permission =
-        source === 'camera'
-          ? await ImagePicker.requestCameraPermissionsAsync()
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) return;
-
-      const result =
-        source === 'camera'
-          ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.6 })
-          : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
-
-      if (!result.canceled) {
-        setInvoiceUri(result.assets[0]?.uri ?? null);
-      }
-    } catch (error) {
-      console.log('Pick invoice error:', error);
-    }
+  const handleStartTrip = () => {
+    router.push({
+      pathname: '/purchase/start-trip',
+      params: { mode: 'empty', loadId: String(id) },
+    } as any);
   };
 
-  const handleComplete = async () => {
-    try {
-      setBusy(true);
+  const handleEndTrip = () => {
+    if (!trip) return;
 
-      let uploadedUrl: string | null = load?.invoiceUrl ?? null;
-
-      // Upload only if the driver picked a new local image (not an already-hosted URL).
-      if (invoiceUri && !invoiceUri.startsWith('http') && !invoiceUri.startsWith('/uploads')) {
-        uploadedUrl = await uploadEmptyLoadInvoice(invoiceUri);
-      }
-
-      await completeEmptyCylinderLoad(id, uploadedUrl);
-      notifyUpdated();
-      await fetchDetail(true);
-      Alert.alert('Success', 'Delivery confirmed and load completed');
-    } catch (error) {
-      const message =
-        isAxiosError(error) && error.response?.data?.message
-          ? String(error.response.data.message)
-          : 'Failed to complete load';
-      Alert.alert('Error', message);
-    } finally {
-      setBusy(false);
-    }
+    router.push({
+      pathname: '/purchase/end-empty-trip',
+      params: {
+        tripId: String(trip.id),
+        loadId: String(id),
+        startKm: String(trip.odometerReading || 0),
+      },
+    } as any);
   };
 
   if (loading) {
@@ -199,12 +185,13 @@ export default function PurchaseEmptyLoadDetailScreen() {
   }
 
   const pill = statusColors(load.status);
-  const invoicePreviewUri =
-    invoiceUri && !invoiceUri.startsWith('http') && !invoiceUri.startsWith('/uploads')
-      ? invoiceUri
-      : invoiceUri
-        ? `${API_SERVER_ROOT}${invoiceUri}`
-        : null;
+
+  // Always a server-hosted URL now — the invoice is uploaded when the trip ends.
+  const invoicePreviewUri = load.invoiceUrl
+    ? load.invoiceUrl.startsWith('http')
+      ? load.invoiceUrl
+      : `${API_SERVER_ROOT}${load.invoiceUrl}`
+    : null;
 
   return (
     <ScreenContainer
@@ -258,47 +245,104 @@ export default function PurchaseEmptyLoadDetailScreen() {
           items={load.commercialItems}
         />
 
-        {/* Completion — invoice + confirm (only when accepted) */}
-        {load.status === 'ACCEPTED' ? (
+        {/* Trip — accepted load with no trip yet: start it. */}
+        {load.status === 'ACCEPTED' && !trip ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>IOC Invoice (optional)</Text>
+            <Text style={styles.cardTitle}>Trip</Text>
+            <Text style={styles.infoText}>
+              Start the trip to carry these empties out. You can add expenses while the trip
+              is running; ending it completes this load.
+            </Text>
 
-            {invoicePreviewUri ? (
-              <Image source={{ uri: invoicePreviewUri }} style={styles.invoiceImage} />
-            ) : null}
+            <TouchableOpacity style={styles.primaryButton} onPress={handleStartTrip}>
+              <Ionicons name="play-circle-outline" size={20} color={DS.white} />
+              <Text style={styles.primaryButtonText}>Start Trip</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
-            <View style={styles.rowGap}>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => handlePickInvoice('camera')}
+        {/* Trip — running: expenses + close it out. */}
+        {trip ? (
+          <View style={styles.card}>
+            <View style={styles.categoryHeader}>
+              <Text style={styles.cardTitle}>Trip #{trip.id}</Text>
+              <View
+                style={[
+                  styles.statusPill,
+                  {
+                    backgroundColor:
+                      trip.status === 'IN_PROGRESS' ? DS.orangeSoft : DS.greenSoft,
+                  },
+                ]}
               >
-                <Ionicons name="camera-outline" size={18} color={DS.primary} />
-                <Text style={styles.secondaryButtonText}>Camera</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => handlePickInvoice('gallery')}
-              >
-                <Ionicons name="image-outline" size={18} color={DS.primary} />
-                <Text style={styles.secondaryButtonText}>Gallery</Text>
-              </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.statusText,
+                    {
+                      color:
+                        trip.status === 'IN_PROGRESS' ? DS.orangeText : PALETTE.green600,
+                    },
+                  ]}
+                >
+                  {trip.status.replaceAll('_', ' ')}
+                </Text>
+              </View>
             </View>
 
-            <TouchableOpacity
-              style={[styles.primaryButton, busy && styles.disabledButton]}
-              disabled={busy}
-              onPress={handleComplete}
-            >
-              {busy ? (
-                <ActivityIndicator color={DS.white} />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle-outline" size={20} color={DS.white} />
-                  <Text style={styles.primaryButtonText}>Confirm Delivery</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <SummaryRow label="Started" value={formatDateTime(trip.startedAt)} />
+            <SummaryRow
+              label="Start reading"
+              value={`${trip.odometerReading.toLocaleString('en-IN')} km`}
+            />
+            {trip.endOdometerReading ? (
+              <>
+                <SummaryRow
+                  label="End reading"
+                  value={`${trip.endOdometerReading.toLocaleString('en-IN')} km`}
+                />
+                <SummaryRow
+                  label="Distance"
+                  value={`${Math.max(
+                    trip.endOdometerReading - trip.odometerReading,
+                    0
+                  ).toLocaleString('en-IN')} km`}
+                />
+              </>
+            ) : null}
+            {trip.endedAt ? (
+              <SummaryRow label="Ended" value={formatDateTime(trip.endedAt)} />
+            ) : null}
+            <SummaryRow
+              label="Expenses"
+              value={`${trip.expenses.length} · ${formatCurrency(
+                trip.expenses.reduce((sum, expense) => sum + expense.amount, 0)
+              )}`}
+            />
+
+            {trip.status === 'IN_PROGRESS' ? (
+              <>
+                <TouchableOpacity
+                  style={styles.secondaryButtonWide}
+                  onPress={() => router.push('/purchase-expenses' as any)}
+                >
+                  <Ionicons name="add-circle-outline" size={18} color={DS.primary} />
+                  <Text style={styles.secondaryButtonText}>Add Expense</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.primaryButton} onPress={handleEndTrip}>
+                  <Ionicons name="flag-outline" size={20} color={DS.white} />
+                  <Text style={styles.primaryButtonText}>End Trip</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* IOC invoice captured when the trip was closed. */}
+        {invoicePreviewUri ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>IOC Invoice</Text>
+            <Image source={{ uri: invoicePreviewUri }} style={styles.invoiceImage} />
           </View>
         ) : null}
 
@@ -542,6 +586,17 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     ...TYPO.s2,
     color: DS.primary,
+  },
+  secondaryButtonWide: {
+    minHeight: 48,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: DS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 14,
   },
   primaryButton: {
     minHeight: 52,

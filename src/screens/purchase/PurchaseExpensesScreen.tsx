@@ -159,7 +159,7 @@ export default function PurchaseExpensesScreen() {
 
   const handleSubmit = async () => {
     if (!activeTrip || !userId) {
-      Alert.alert('No active trip', 'Start a purchase trip before adding expenses.');
+      Alert.alert('No active trip', 'Start a trip before adding expenses.');
       return;
     }
 

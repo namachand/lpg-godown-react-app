@@ -268,6 +268,16 @@ export default function GodownStockScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Acceptance/completion status of the dispatches sent to purchase. */}
+          <TouchableOpacity
+            style={styles.dispatchStatusButton}
+            onPress={() => router.push('/empty-dispatches' as any)}
+          >
+            <Ionicons name="list-outline" size={18} color={DS.primary} />
+            <Text style={styles.dispatchStatusText}>Dispatch Status</Text>
+            <Ionicons name="chevron-forward" size={16} color={DS.primary} />
+          </TouchableOpacity>
+
           {stockOutLoading ? (
             <View style={styles.loaderBox}>
               <ActivityIndicator color={DS.primary} />
@@ -759,6 +769,23 @@ const styles = StyleSheet.create({
   greenButtonText: {
     ...TYPO.s2,
     color: DS.white,
+  },
+  dispatchStatusButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 46,
+    paddingHorizontal: 14,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: DS.primary,
+    backgroundColor: DS.primarySoft,
+    marginBottom: 14,
+  },
+  dispatchStatusText: {
+    ...TYPO.s2,
+    color: DS.primary,
+    flex: 1,
   },
   dateHeader: {
     flexDirection: 'row',

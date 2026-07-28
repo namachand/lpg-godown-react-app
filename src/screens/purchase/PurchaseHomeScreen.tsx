@@ -108,6 +108,13 @@ export default function PurchaseHomeScreen() {
               activeOpacity={0.85}
               style={styles.activeBanner}
               onPress={() => {
+                // An empty trip has no purchase loads by design — send the driver
+                // to its dispatch, which is where its actions live.
+                if (activeTrip.tripType === 'EMPTY' && activeTrip.emptyLoadId) {
+                  router.push(`/purchase/empty-load/${activeTrip.emptyLoadId}` as any);
+                  return;
+                }
+
                 if (activeTrip.status === 'IN_PROGRESS' && !activeTrip.loads.length) {
                   router.push({
                     pathname: '/purchase/create-load',

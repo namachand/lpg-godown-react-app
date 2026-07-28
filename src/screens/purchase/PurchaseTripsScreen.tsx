@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -142,11 +143,34 @@ export default function PurchaseTripsScreen() {
               const pill = statusPillStyle(trip.status);
 
               return (
-                <View key={trip.id} style={styles.tripCard}>
+                <TouchableOpacity
+                  key={trip.id}
+                  activeOpacity={trip.tripType === 'EMPTY' && trip.emptyLoadId ? 0.85 : 1}
+                  disabled={!(trip.tripType === 'EMPTY' && trip.emptyLoadId)}
+                  onPress={() =>
+                    router.push(`/purchase/empty-load/${trip.emptyLoadId}` as any)
+                  }
+                  style={styles.tripCard}
+                >
                   <View style={styles.tripHeader}>
                     <View>
                       <Text style={styles.tripLabel}>Trip ID</Text>
                       <Text style={styles.tripId}>#{trip.id}</Text>
+                      <View
+                        style={[
+                          styles.typePill,
+                          trip.tripType === 'EMPTY' ? styles.typePillEmpty : null,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.typePillText,
+                            trip.tripType === 'EMPTY' ? styles.typePillTextEmpty : null,
+                          ]}
+                        >
+                          {trip.tripType === 'EMPTY' ? 'EMPTY CYLINDERS' : 'CYLINDER PURCHASE'}
+                        </Text>
+                      </View>
                     </View>
 
                     <View style={[styles.statusPill, { backgroundColor: pill.bg }]}>
@@ -164,7 +188,7 @@ export default function PurchaseTripsScreen() {
                   </View>
 
                   <Text style={styles.tripTime}>{formatTripDateTime(trip.startedAt)}</Text>
-                </View>
+                </TouchableOpacity>
               );
             })
           ) : (
@@ -261,6 +285,27 @@ const styles = StyleSheet.create({
     ...TYPO.h5,
     color: DS.textPrimary,
     marginTop: 1,
+  },
+  typePill: {
+    alignSelf: 'flex-start',
+    borderRadius: RADIUS.sm,
+    backgroundColor: DS.grey100,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 6,
+  },
+  typePillEmpty: {
+    backgroundColor: DS.primarySoft,
+  },
+  typePillText: {
+    ...TYPO.c3,
+    fontSize: 9,
+    fontWeight: WEIGHT.semibold,
+    letterSpacing: 0.5,
+    color: DS.textSecondary,
+  },
+  typePillTextEmpty: {
+    color: DS.primary,
   },
   statusPill: {
     borderRadius: RADIUS.sm,

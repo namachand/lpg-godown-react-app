@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { isAxiosError } from 'axios';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,10 +18,21 @@ import {
 
 import { AUTH_USER_KEY } from '../../constants/auth';
 import { DS, TYPO, EYEBROW, RADIUS, PALETTE, WEIGHT } from '../../constants/designSystem';
-import { getPurchaseBootstrap, startPurchaseTrip, uploadOdometerImage } from '../../services/purchaseService';
+import {
+  getPurchaseBootstrap,
+  startEmptyCylinderTrip,
+  startPurchaseTrip,
+  uploadOdometerImage,
+} from '../../services/purchaseService';
 import type { PurchaseBootstrap, PurchaseTripOverview } from '../../types';
 
 export default function PurchaseStartTripScreen() {
+  // Reached with `mode=empty&loadId=<id>` from an accepted godown empty-cylinder
+  // dispatch; without params it starts the standard cylinder purchase trip.
+  const { mode, loadId } = useLocalSearchParams<{ mode?: string; loadId?: string }>();
+  const emptyLoadId = mode === 'empty' ? Number(loadId) : 0;
+  const isEmptyTrip = emptyLoadId > 0;
+
   const [bootstrap, setBootstrap] = useState<PurchaseBootstrap | null>(null);
   const [storedUserId, setStoredUserId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,6 +109,21 @@ export default function PurchaseStartTripScreen() {
         }
       }
 
+      if (isEmptyTrip) {
+        await startEmptyCylinderTrip({
+          userId: managerId,
+          emptyLoadId,
+          odometerReading: Number(odometerReading || 0),
+          odometerImageUrl: uploadedImageUrl,
+        });
+
+        DeviceEventEmitter.emit('PURCHASE_FLOW_UPDATED');
+
+        // Back to the load, which now shows the running trip and its actions.
+        router.replace(`/purchase/empty-load/${emptyLoadId}` as any);
+        return;
+      }
+
       const trip = await startPurchaseTrip({
         userId: managerId,
         stockAreaId: bootstrap?.defaultStockArea?.id ?? null,
@@ -115,29 +141,35 @@ export default function PurchaseStartTripScreen() {
 
       if (isAxiosError(error) && error.response?.status === 409) {
         const activeTrip = (error.response?.data?.data || null) as PurchaseTripOverview | null;
+        const message = String(error.response?.data?.message || '');
 
         if (activeTrip?.id) {
+          // The blocking trip may be of either type — send the driver to the
+          // screen that can actually continue it.
+          const continueTo =
+            activeTrip.tripType === 'EMPTY' && activeTrip.emptyLoadId
+              ? (`/purchase/empty-load/${activeTrip.emptyLoadId}` as any)
+              : ({
+                  pathname: '/purchase/create-load',
+                  params: { tripId: String(activeTrip.id) },
+                } as any);
+
           Alert.alert(
             'Trip already active',
-            'An active trip already exists. Continue with that trip now.',
-            [
-              {
-                text: 'Continue',
-                onPress: () => {
-                  router.replace({
-                    pathname: '/purchase/create-load',
-                    params: { tripId: String(activeTrip.id) },
-                  } as any);
-                },
-              },
-            ]
+            message || 'An active trip already exists. Continue with that trip now.',
+            [{ text: 'Continue', onPress: () => router.replace(continueTo) }]
           );
         }
 
         return;
       }
 
-      Alert.alert('Error', 'Could not start trip right now. Please try again.');
+      const message =
+        isAxiosError(error) && error.response?.data?.message
+          ? String(error.response.data.message)
+          : 'Could not start trip right now. Please try again.';
+
+      Alert.alert('Error', message);
     } finally {
       setSubmitting(false);
     }
@@ -158,7 +190,9 @@ export default function PurchaseStartTripScreen() {
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={18} color={DS.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.title}>Start New Trip</Text>
+          <Text style={styles.title}>
+            {isEmptyTrip ? `Start Empty Trip · Load #${emptyLoadId}` : 'Start New Trip'}
+          </Text>
         </View>
 
         <Text style={styles.label}>ODOMETER READING (KM)</Text>
